@@ -18,13 +18,43 @@
  * USA
  */
 
-#include <glib-object.h>
 
 #ifndef GEYE_TRACKER_H
 #define GEYE_TRACKER_H
 
+#include <glib-object.h>
+#include <gio/gio.h>
+
 G_BEGIN_DECLS 
+
+#define GEYE_TYPE_EYETRACKER geye_eyetracker_get_type()
+G_DECLARE_INTERFACE(GeyeEyetracker, geye_eyetracker, GEYE, EYETRACKER, GObject)
+
+struct _GeyeEyetrackerInterface {
+    GTypeInterface parent_iface;
+
+    void (*connect)         (GeyeEyetracker*    et,
+                             GError**           error);
+
+    void (*start_tracking)  (GeyeEyetracker*    et,
+                             GError**           error);
+
+    void (*calibrate)       (GeyeEyetracker*    et,
+                             GError**           error);
+
+    void (*validate)        (GeyeEyetracker*    et,
+                             GError**           error);
+};
+
+G_MODULE_EXPORT void
+geye_eyetracker_connect(GeyeEyetracker* et, GError** error);
+G_MODULE_EXPORT void
+geye_eyetracker_start_tracking(GeyeEyetracker* et, GError** error);
+G_MODULE_EXPORT void
+geye_eyetracker_calibrate(GeyeEyetracker* et, GError** error);
+G_MODULE_EXPORT void
+geye_eyetracker_validate(GeyeEyetracker* et, GError** error);
 
 G_END_DECLS 
 
-#define GEYE_TRACKER_H
+#endif 
