@@ -26,6 +26,8 @@ project(
     license : 'LGPL-2.1-or-later'
 )
 
+c_compiler = meson.get_compiler('c')
+
 geye_version = meson.project_version()
 version_array = geye_version.split('.')
 version_major = version_array[0]
@@ -40,6 +42,8 @@ libglib_dep = dependency('glib-2.0', fallback : ['glib', 'libglib_dep'] )
 libgobject_dep = dependency('gobject-2.0', fallback : ['glib', 'libgobject_dep'])
 libgio_dep= dependency('gio-2.0', fallback : ['glib', 'libgio_dep'])
 libgmodule_dep = dependency('gmodule-2.0', fallback : ['glib', 'libgmodule_dep'])
+
+lib_eyelink_core = c_compiler.find_library('eyelink_core', static : false)
 
 geye_deps = [libglib_dep, libgobject_dep, libgio_dep, libgmodule_dep]
 

@@ -18,11 +18,23 @@
  * USA
  */
 
-#ifndef GEYE_H
-#define GEYE_H
 
-#include "eyelink-et.h"
-#include "eyetracker-error.h"
+#ifndef GEYE_EYELINK_ET_H
+#define GEYE_EYELINK_ET_H
+
 #include "eyetracker.h"
+#include <glib-object.h>
+#include <gio/gio.h>
 
-#endif
+G_BEGIN_DECLS
+
+#define GEYE_TYPE_EYELINK_ET geye_eyelink_et_get_type()
+G_DECLARE_FINAL_TYPE(GEyeEyelinkEt, geye_eyelink_et, GEYE, EYELINK_ET, GObject)
+
+G_MODULE_EXPORT GEyeEyelinkEt*
+g_eyelink_et_new(void);
+
+
+G_END_DECLS 
+
+#endif 

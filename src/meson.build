@@ -19,14 +19,12 @@
 geye_public_header = 'geye.h'
 geye_public_headers = files (
     geye_public_header,
-    'eyetracker.h',
+    'eyelink-et.h',
+    'eyetracker-error.h',
+    'eyetracker.h'
 )
 
 install_headers(geye_public_headers, subdir : 'geye')
-
-geye_sources = files(
-    'eyetracker.c'
-)
 
 extra_c_args = []
 buildtype = get_option('buildtype')
@@ -36,10 +34,17 @@ else
     extra_c_args += []
 endif
 
+geye_sources = files(
+    'eyelink-et-private.c',
+    'eyelink-et.c',
+    'eyetracker-error.c',
+    'eyetracker.c'
+)
+
 libgeye = library(
     'geye',
     geye_sources,
-    dependencies : geye_deps,
+    dependencies : geye_deps + [lib_eyelink_core],
     gnu_symbol_visibility : 'hidden',
     install : true,
     c_args : extra_c_args
@@ -47,7 +52,7 @@ libgeye = library(
 
 libgeye_dep = declare_dependency(
     link_with : libgeye,
-    dependencies : geye_deps
+    dependencies : geye_deps + [lib_eyelink_core]
 )
 
 

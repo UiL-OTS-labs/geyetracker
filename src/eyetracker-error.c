@@ -18,11 +18,6 @@
  * USA
  */
 
-#ifndef GEYE_H
-#define GEYE_H
-
-#include "eyelink-et.h"
 #include "eyetracker-error.h"
-#include "eyetracker.h"
 
-#endif
+G_DEFINE_QUARK (geye-eyetracker-error-quark, geye_eyetracker_error)

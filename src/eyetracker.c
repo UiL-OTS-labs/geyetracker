@@ -20,7 +20,7 @@
 
 #include "eyetracker.h"
 
-G_DEFINE_INTERFACE(GeyeEyetracker, geye_eyetracker, G_TYPE_OBJECT)
+G_DEFINE_INTERFACE(GEyeEyetracker, geye_eyetracker, G_TYPE_OBJECT)
 
 enum EyeTrackerProperties {
     PROP_0,
@@ -31,7 +31,7 @@ enum EyeTrackerProperties {
 GParamSpec* obj_properties[N_PROPERTIES] = {NULL,};
 
 static void
-geye_eyetracker_default_init(GeyeEyetrackerInterface *iface)
+geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
 {
 
     obj_properties[PROP_CONNECTED] = g_param_spec_boolean (
@@ -46,9 +46,9 @@ geye_eyetracker_default_init(GeyeEyetrackerInterface *iface)
 }
 
 void
-geye_eyetracker_connect(GeyeEyetracker* et, GError** error)
+geye_eyetracker_connect(GEyeEyetracker* et, GError** error)
 {
-    GeyeEyetrackerInterface* iface;
+    GEyeEyetrackerInterface* iface;
 
     g_return_if_fail(GEYE_IS_EYETRACKER(et));
 
@@ -58,9 +58,9 @@ geye_eyetracker_connect(GeyeEyetracker* et, GError** error)
 }
 
 void
-geye_eyetracker_start_tracking(GeyeEyetracker* et, GError** error)
+geye_eyetracker_start_tracking(GEyeEyetracker* et, GError** error)
 {
-    GeyeEyetrackerInterface* iface;
+    GEyeEyetrackerInterface* iface;
 
     g_return_if_fail(GEYE_IS_EYETRACKER(et));
 
@@ -70,9 +70,9 @@ geye_eyetracker_start_tracking(GeyeEyetracker* et, GError** error)
 }
 
 void
-geye_eyetracker_calibrate(GeyeEyetracker* et, GError** error)
+geye_eyetracker_calibrate(GEyeEyetracker* et, GError** error)
 {
-    GeyeEyetrackerInterface* iface;
+    GEyeEyetrackerInterface* iface;
 
     g_return_if_fail(GEYE_IS_EYETRACKER(et));
 
@@ -82,9 +82,9 @@ geye_eyetracker_calibrate(GeyeEyetracker* et, GError** error)
 }
 
 void
-geye_eyetracker_validate(GeyeEyetracker* et, GError** error)
+geye_eyetracker_validate(GEyeEyetracker* et, GError** error)
 {
-    GeyeEyetrackerInterface* iface;
+    GEyeEyetrackerInterface* iface;
 
     g_return_if_fail(GEYE_IS_EYETRACKER(et));
 
@@ -92,5 +92,6 @@ geye_eyetracker_validate(GeyeEyetracker* et, GError** error)
     g_return_if_fail(iface->validate != NULL);
     iface->validate(et, error);
 }
+
 
 

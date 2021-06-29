@@ -18,11 +18,21 @@
  * USA
  */
 
-#ifndef GEYE_H
-#define GEYE_H
+#ifndef GEYE_EYETRACKER_ERROR_H
+#define GEYE_EYETRACKER_ERROR_H
 
-#include "eyelink-et.h"
-#include "eyetracker-error.h"
-#include "eyetracker.h"
+#include <glib.h>
+
+G_BEGIN_DECLS
+
+enum {
+    GEYE_EYETRACKER_ERROR_UNABLE_TO_CONNECT,
+}GEYE_EYETRACKER_ERROR;
+
+#define GEYE_EYETRACKER_ERROR geye_eyetracker_error_quark()
+
+GQuark geye_eyetracker_error_quark();
+
+G_END_DECLS
 
 #endif

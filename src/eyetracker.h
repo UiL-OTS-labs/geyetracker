@@ -28,32 +28,32 @@
 G_BEGIN_DECLS 
 
 #define GEYE_TYPE_EYETRACKER geye_eyetracker_get_type()
-G_DECLARE_INTERFACE(GeyeEyetracker, geye_eyetracker, GEYE, EYETRACKER, GObject)
+G_DECLARE_INTERFACE(GEyeEyetracker, geye_eyetracker, GEYE, EYETRACKER, GObject)
 
-struct _GeyeEyetrackerInterface {
+struct _GEyeEyetrackerInterface {
     GTypeInterface parent_iface;
 
-    void (*connect)         (GeyeEyetracker*    et,
+    void (*connect)         (GEyeEyetracker*    et,
                              GError**           error);
 
-    void (*start_tracking)  (GeyeEyetracker*    et,
+    void (*start_tracking)  (GEyeEyetracker*    et,
                              GError**           error);
 
-    void (*calibrate)       (GeyeEyetracker*    et,
+    void (*calibrate)       (GEyeEyetracker*    et,
                              GError**           error);
 
-    void (*validate)        (GeyeEyetracker*    et,
+    void (*validate)        (GEyeEyetracker*    et,
                              GError**           error);
 };
 
 G_MODULE_EXPORT void
-geye_eyetracker_connect(GeyeEyetracker* et, GError** error);
+geye_eyetracker_connect(GEyeEyetracker* et, GError** error);
 G_MODULE_EXPORT void
-geye_eyetracker_start_tracking(GeyeEyetracker* et, GError** error);
+geye_eyetracker_start_tracking(GEyeEyetracker* et, GError** error);
 G_MODULE_EXPORT void
-geye_eyetracker_calibrate(GeyeEyetracker* et, GError** error);
+geye_eyetracker_calibrate(GEyeEyetracker* et, GError** error);
 G_MODULE_EXPORT void
-geye_eyetracker_validate(GeyeEyetracker* et, GError** error);
+geye_eyetracker_validate(GEyeEyetracker* et, GError** error);
 
 G_END_DECLS 
 

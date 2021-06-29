@@ -18,11 +18,29 @@
  * USA
  */
 
-#ifndef GEYE_H
-#define GEYE_H
+
+#ifndef GEYE_EYELINK_ET_PRIVATE_H
+#define GEYE_EYELINK_ET_PRIVATE_H
 
 #include "eyelink-et.h"
-#include "eyetracker-error.h"
-#include "eyetracker.h"
 
-#endif
+G_BEGIN_DECLS
+
+struct _GEyeEyelinkEt {
+    GObject      parent;
+    char*        ip_address;
+    GThread*     eyelink_thread;
+    gboolean     stop_thread;
+    GAsyncQueue* instance_to_thread;
+    GAsyncQueue* thread_to_instance;
+};
+
+GThread* eyelink_thread_start(GEyeEyelinkEt* self);
+
+void     eyelink_thread_stop(GEyeEyelinkEt*  self);
+
+void     eyelink_thread_connect(GEyeEyelinkEt* self, GError** error);
+
+G_END_DECLS 
+
+#endif 
