@@ -48,6 +48,7 @@ lib_eyelink_core = c_compiler.find_library('eyelink_core', static : false)
 geye_deps = [libglib_dep, libgobject_dep, libgio_dep, libgmodule_dep]
 
 subdir ('src')
+subdir ('test')
 
 pkg = import ('pkgconfig')
 pkg.generate (

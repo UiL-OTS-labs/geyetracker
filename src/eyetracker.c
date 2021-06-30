@@ -22,27 +22,19 @@
 
 G_DEFINE_INTERFACE(GEyeEyetracker, geye_eyetracker, G_TYPE_OBJECT)
 
-enum EyeTrackerProperties {
-    PROP_0,
-    PROP_CONNECTED,
-    N_PROPERTIES 
-};
-
-GParamSpec* obj_properties[N_PROPERTIES] = {NULL,};
-
 static void
 geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
 {
 
-    obj_properties[PROP_CONNECTED] = g_param_spec_boolean (
+    GParamSpec* spec = g_param_spec_boolean (
         "connected",
         "Connected",
         "Whether or not there is a connection with the eyetracker.",
         FALSE,
-        G_PARAM_CONSTRUCT | G_PARAM_READABLE
+        G_PARAM_READABLE
     );
 
-    g_object_class_install_properties(G_OBJECT_CLASS(iface), N_PROPERTIES, obj_properties);
+    g_object_interface_install_property(iface, spec); 
 }
 
 void

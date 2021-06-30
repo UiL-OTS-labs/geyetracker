@@ -18,24 +18,25 @@
  * USA
  */
 
+#include <geye.h>
+#include <locale.h>
 
-#ifndef GEYE_EYELINK_ET_H
-#define GEYE_EYELINK_ET_H
+static void
+eyelink_create(void)
+{
+    GEyeEyelinkEt* et;
+    et = g_object_new(GEYE_TYPE_EYELINK_ET, NULL);
+    g_assert_nonnull(et);
 
-#include "eyetracker.h"
-#include <glib-object.h>
-#include <gio/gio.h>
+    g_object_unref(et);
+}
 
-G_BEGIN_DECLS
+int main(int argc, char** argv)
+{
+    setlocale(LC_ALL, "");
+    g_test_init(&argc, &argv, NULL);
 
-#define GEYE_TYPE_EYELINK_ET geye_eyelink_et_get_type()
-G_MODULE_EXPORT
-G_DECLARE_FINAL_TYPE(GEyeEyelinkEt, geye_eyelink_et, GEYE, EYELINK_ET, GObject)
+    g_test_add_func("/EyelinkEt/create", eyelink_create);
 
-G_MODULE_EXPORT GEyeEyelinkEt*
-g_eyelink_et_new(void);
-
-
-G_END_DECLS 
-
-#endif 
+    return g_test_run();
+}

@@ -87,11 +87,20 @@ et_connect(GEyeEyelinkEt* self) {
 }
 
 static void
+et_disconnect(GEyeEyelinkEt* self)
+{
+    close_eyelink_connection();
+    self->connected = FALSE;
+}
+
+static void
 handle_msg(GEyeEyelinkEt* self, EyelinkThreadMsg* msg)
 {
     switch(msg->type) {
         case ET_STOP:
             self->stop_thread = TRUE;
+            if (self->connected)
+                et_disconnect(self);
             break;
         case ET_CONNECT:
             et_connect(self);
@@ -126,9 +135,7 @@ monitor_main_thread(GEyeEyelinkEt* self, gboolean sleep)
 gpointer eyelink_thread(gpointer data) {
     GEyeEyelinkEt* self = GEYE_EYELINK_ET(data);
 
-    gboolean stop = FALSE;
-
-    while (!stop) {
+    while (self->stop_thread) {
         gboolean didsomething = FALSE;
         
         if (didsomething)
@@ -153,7 +160,7 @@ void
 eyelink_thread_stop(GEyeEyelinkEt* self)
 {
     EyelinkThreadMsg* msg = g_malloc0(sizeof(EyelinkThreadMsg));
-    msg->type = ET_CONNECT;
+    msg->type = ET_STOP;
     et_send_message(self, msg);
     g_thread_join(self->eyelink_thread);
 }

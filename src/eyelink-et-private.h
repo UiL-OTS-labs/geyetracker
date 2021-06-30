@@ -31,6 +31,7 @@ struct _GEyeEyelinkEt {
     char*        ip_address;
     GThread*     eyelink_thread;
     gboolean     stop_thread;
+    gboolean     connected;
     GAsyncQueue* instance_to_thread;
     GAsyncQueue* thread_to_instance;
 };

@@ -35,6 +35,9 @@ static void
 geye_eyelink_et_init(GEyeEyelinkEt* self) {
     self->stop_thread       = FALSE;
     self->eyelink_thread    = eyelink_thread_start(self);
+    self->connected         = FALSE;
+    self->instance_to_thread= g_async_queue_new_full(g_free);
+    self->thread_to_instance= g_async_queue_new_full(g_free);
 }
 
 static void
@@ -60,8 +63,13 @@ eyelink_et_dispose(GObject* gobject)
     // stop eyelink thread
     if (self->eyelink_thread)
         eyelink_thread_stop(self);
-    g_thread_unref(self->eyelink_thread);
     self->eyelink_thread = NULL;
+
+    g_async_queue_unref(self->thread_to_instance);
+    self->thread_to_instance = NULL;
+
+    g_async_queue_unref(self->instance_to_thread);
+    self->instance_to_thread = NULL;
 
     G_OBJECT_CLASS(geye_eyelink_et_parent_class)->dispose(gobject);
 }
@@ -74,6 +82,47 @@ eyelink_et_finalize(GObject* gobject)
     G_OBJECT_CLASS(geye_eyelink_et_parent_class)->finalize(gobject);
 }
 
+typedef enum {
+    PROP_NULL,
+    N_PROPERTIES,
+    PROP_CONNECTED
+}GEyeEyelinkEtProperty;
+
+static void
+geye_eyelink_et_set_property(GObject       *obj,
+                             guint          property_id,
+                             const GValue  *value,
+                             GParamSpec    *pspec
+                             )
+{
+    GEyeEyelinkEt* self = GEYE_EYELINK_ET(obj);
+
+    switch((GEyeEyelinkEtProperty) property_id) {
+        case PROP_CONNECTED:
+        case PROP_NULL:
+        default:
+            G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
+    }
+}
+static void
+geye_eyelink_et_get_property(GObject       *obj,
+                             guint          property_id,
+                             GValue        *value,
+                             GParamSpec    *pspec
+                             )
+{
+    GEyeEyelinkEt* self = GEYE_EYELINK_ET(obj);
+
+    switch((GEyeEyelinkEtProperty) property_id) {
+        case PROP_CONNECTED:
+            g_value_set_boolean(value, self->connected);
+            break;
+        case PROP_NULL:
+        default:
+            G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
+    }
+
+}
 
 static void
 geye_eyelink_et_class_init(GEyeEyelinkEtClass* klass)
@@ -81,5 +130,8 @@ geye_eyelink_et_class_init(GEyeEyelinkEtClass* klass)
     GObjectClass* object_class = G_OBJECT_CLASS(klass);
     object_class->dispose = eyelink_et_dispose;
     object_class->finalize = eyelink_et_finalize;
+    object_class->get_property = geye_eyelink_et_get_property;
+    object_class->set_property = geye_eyelink_et_set_property;
 
+    g_object_class_override_property(object_class, PROP_CONNECTED, "connected");
 }

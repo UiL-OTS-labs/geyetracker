@@ -48,10 +48,13 @@ struct _GEyeEyetrackerInterface {
 
 G_MODULE_EXPORT void
 geye_eyetracker_connect(GEyeEyetracker* et, GError** error);
+
 G_MODULE_EXPORT void
 geye_eyetracker_start_tracking(GEyeEyetracker* et, GError** error);
+
 G_MODULE_EXPORT void
 geye_eyetracker_calibrate(GEyeEyetracker* et, GError** error);
+
 G_MODULE_EXPORT void
 geye_eyetracker_validate(GEyeEyetracker* et, GError** error);
 
