@@ -26,13 +26,15 @@ geye_public_headers = files (
 
 install_headers(geye_public_headers, subdir : 'geye')
 
-extra_c_args = []
+extra_c_args = ['-DG_LOG_DOMAIN="GEye"', '-DG_LOG_USE_STRUCTURED']
 buildtype = get_option('buildtype')
 if buildtype != 'debug' and buildtype != 'plain'
     extra_c_args += ['-DG_DISABLE_ASSERT']
 else
     extra_c_args += []
 endif
+
+
 
 geye_sources = files(
     'eyelink-et-private.c',

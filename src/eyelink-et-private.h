@@ -29,18 +29,27 @@ G_BEGIN_DECLS
 struct _GEyeEyelinkEt {
     GObject      parent;
     char*        ip_address;
+    gboolean     simulated;
     GThread*     eyelink_thread;
     gboolean     stop_thread;
     gboolean     connected;
+    gboolean     tracking;
+    gboolean     recording;
     GAsyncQueue* instance_to_thread;
     GAsyncQueue* thread_to_instance;
 };
 
 GThread* eyelink_thread_start(GEyeEyelinkEt* self);
-
 void     eyelink_thread_stop(GEyeEyelinkEt*  self);
 
 void     eyelink_thread_connect(GEyeEyelinkEt* self, GError** error);
+void     eyelink_thread_disconnect(GEyeEyelinkEt* self);
+
+void     eyelink_thread_start_tracking(GEyeEyelinkEt* self, GError** error);
+void     eyelink_thread_stop_tracking(GEyeEyelinkEt* self);
+
+void     eyelink_thread_start_recording(GEyeEyelinkEt* self, GError** error);
+void     eyelink_thread_stop_recording(GEyeEyelinkEt* self);
 
 G_END_DECLS 
 

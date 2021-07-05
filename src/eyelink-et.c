@@ -21,6 +21,7 @@
 #include "eyelink-et.h"
 #include "eyelink-et-private.h"
 #include "eyetracker.h"
+#include "eyetracker-error.h"
 
 static void
 geye_eyetracker_interface_init(GEyeEyetrackerInterface* iface);
@@ -34,10 +35,15 @@ G_DEFINE_TYPE_WITH_CODE(GEyeEyelinkEt,
 static void
 geye_eyelink_et_init(GEyeEyelinkEt* self) {
     self->stop_thread       = FALSE;
-    self->eyelink_thread    = eyelink_thread_start(self);
     self->connected         = FALSE;
+    self->simulated         = FALSE;
+    self->recording         = FALSE;
+    self->tracking          = FALSE;
     self->instance_to_thread= g_async_queue_new_full(g_free);
     self->thread_to_instance= g_async_queue_new_full(g_free);
+
+    // keep this last, otherwise the queue might be NULL
+    self->eyelink_thread    = eyelink_thread_start(self);
 }
 
 static void
@@ -47,9 +53,46 @@ eyelink_et_connect(GEyeEyetracker* self, GError** error)
 }
 
 static void
+eyelink_et_disconnect(GEyeEyetracker* self)
+{
+    eyelink_thread_disconnect(GEYE_EYELINK_ET(self));
+}
+
+static void
+eyelink_et_start_tracking(GEyeEyetracker* self, GError** error)
+{
+    eyelink_thread_start_tracking(GEYE_EYELINK_ET(self), error);
+}
+
+static void
+eyelink_et_stop_tracking(GEyeEyetracker* self)
+{
+    eyelink_thread_stop_tracking(GEYE_EYELINK_ET(self));
+}
+
+static void
+eyelink_et_start_recording(GEyeEyetracker* self, GError** error)
+{
+    eyelink_thread_start_recording(GEYE_EYELINK_ET(self), error);
+}
+
+static void
+eyelink_et_stop_recording(GEyeEyetracker* self)
+{
+    eyelink_thread_stop_recording(GEYE_EYELINK_ET(self));
+}
+
+static void
 geye_eyetracker_interface_init(GEyeEyetrackerInterface* iface)
 {
-    iface->connect = eyelink_et_connect;
+    iface->connect          = eyelink_et_connect;
+    iface->disconnect       = eyelink_et_disconnect;
+
+    iface->start_tracking   = eyelink_et_start_tracking;
+    iface->stop_tracking    = eyelink_et_stop_tracking;
+
+    iface->start_recording  = eyelink_et_start_recording;
+    iface->stop_recording   = eyelink_et_stop_recording;
 }
 
 static void
@@ -84,9 +127,14 @@ eyelink_et_finalize(GObject* gobject)
 
 typedef enum {
     PROP_NULL,
+    PROP_SIMULATED,
     N_PROPERTIES,
-    PROP_CONNECTED
+    PROP_CONNECTED,
+    PROP_TRACKING,
+    PROP_RECORDING
 }GEyeEyelinkEtProperty;
+
+static GParamSpec* obj_properties[N_PROPERTIES] = {NULL, };
 
 static void
 geye_eyelink_et_set_property(GObject       *obj,
@@ -96,8 +144,11 @@ geye_eyelink_et_set_property(GObject       *obj,
                              )
 {
     GEyeEyelinkEt* self = GEYE_EYELINK_ET(obj);
+    (void) self;
+    (void) value;
 
     switch((GEyeEyelinkEtProperty) property_id) {
+        case PROP_SIMULATED:
         case PROP_CONNECTED:
         case PROP_NULL:
         default:
@@ -117,6 +168,15 @@ geye_eyelink_et_get_property(GObject       *obj,
         case PROP_CONNECTED:
             g_value_set_boolean(value, self->connected);
             break;
+        case PROP_SIMULATED:
+            g_value_set_boolean(value, geye_eyelink_et_get_simulated(self));
+            break;
+        case PROP_RECORDING:
+            g_value_set_boolean(value, self->recording);
+            break;
+        case PROP_TRACKING:
+            g_value_set_boolean(value, self->tracking);
+            break;
         case PROP_NULL:
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
@@ -133,5 +193,90 @@ geye_eyelink_et_class_init(GEyeEyelinkEtClass* klass)
     object_class->get_property = geye_eyelink_et_get_property;
     object_class->set_property = geye_eyelink_et_set_property;
 
+    obj_properties[PROP_SIMULATED] = g_param_spec_boolean(
+            "simulated",
+            "Simulated",
+            "If set to true connect to a simulated version of the eyelink",
+            FALSE,
+            G_PARAM_READABLE
+            );
+
+    g_object_class_install_properties(
+            object_class, N_PROPERTIES, obj_properties
+            );
+
     g_object_class_override_property(object_class, PROP_CONNECTED, "connected");
+    g_object_class_override_property(object_class, PROP_TRACKING, "tracking");
+    g_object_class_override_property(object_class, PROP_RECORDING, "recording");
+}
+
+/* ***************************** public functions *************************** */
+
+/**
+ * geye_eyelink_et_new:(constructor)
+ *
+ * Construct a new GEyeEyelinkEt*
+ *
+ * returns:(transfer full):a new GEyeEyelinkEt*
+ */
+GEyeEyelinkEt*
+geye_eyelink_et_new()
+{
+    return g_object_new(GEYE_TYPE_EYELINK_ET, NULL);
+}
+
+/**
+ * geye_eyelink_et_destroy:(destructor)
+ * @self:the #GEyeEyelinkEt instance to destroy.
+ *
+ * Drops a reference on self.
+ */
+void
+geye_eyelink_et_destroy(GEyeEyelinkEt* self)
+{
+    g_object_unref(self);
+}
+
+/**
+ * geye_eyelink_et_set_simulated:
+ * @param self : A GEyeEyelinkEt
+ * @param simulated : Whether or not to start the eyetracker in simulated mode.
+ * @param error:nullable: If an error occurs it can be returned here.
+ *
+ * Prior to making a connection to the eyetracker, you can set the simulated
+ * property to TRUE, this makes it possibe to use the this instance for
+ * pilotting without a connected eyetracker.
+ */
+void
+geye_eyelink_et_set_simulated(
+        GEyeEyelinkEt  *self,
+        gboolean        simulated,
+        GError        **error
+        )
+{
+    g_return_if_fail(GEYE_IS_EYELINK_ET(self));
+    g_return_if_fail(error == NULL || *error == NULL);
+
+    if (self->connected) {
+        g_set_error(
+                error,
+                geye_eyetracker_error_quark(),
+                GEYE_EYETRACKER_ERROR_INCORRECT_MODE,
+                "Set simulated mode prior to connecting to the eyetracker"
+        );
+    }
+    self->simulated = simulated;
+}
+
+/**
+ * geye_eyelink_et_get_simulated:
+ * @param self:A GEyeEyelinkEt
+ *
+ * Returns::whether or not the eyetracker is setup for simulated mode.
+ */
+gboolean
+geye_eyelink_et_get_simulated(GEyeEyelinkEt* self)
+{
+    g_return_val_if_fail(GEYE_IS_EYELINK_ET(self), FALSE);
+    return self->simulated;
 }

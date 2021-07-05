@@ -26,15 +26,34 @@ static void
 geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
 {
 
-    GParamSpec* spec = g_param_spec_boolean (
+    GParamSpec* spec;
+    spec = g_param_spec_boolean (
         "connected",
         "Connected",
         "Whether or not there is a connection with the eyetracker.",
         FALSE,
         G_PARAM_READABLE
     );
+    g_object_interface_install_property(iface, spec);
 
-    g_object_interface_install_property(iface, spec); 
+    spec = g_param_spec_boolean (
+            "recording",
+            "Recording",
+            "Whether or not the eyetracker is recording to the eyetracking log.",
+            FALSE,
+            G_PARAM_READABLE
+    );
+    g_object_interface_install_property(iface, spec);
+
+    spec = g_param_spec_boolean (
+            "tracking",
+            "Tracking",
+            "Whether or not the eyetracker is tracking.",
+            FALSE,
+            G_PARAM_READABLE
+    );
+    g_object_interface_install_property(iface, spec);
+
 }
 
 void
@@ -50,6 +69,18 @@ geye_eyetracker_connect(GEyeEyetracker* et, GError** error)
 }
 
 void
+geye_eyetracker_disconnect(GEyeEyetracker* et)
+{
+    GEyeEyetrackerInterface* iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->disconnect != NULL);
+    iface->disconnect(et);
+}
+
+void
 geye_eyetracker_start_tracking(GEyeEyetracker* et, GError** error)
 {
     GEyeEyetrackerInterface* iface;
@@ -59,6 +90,18 @@ geye_eyetracker_start_tracking(GEyeEyetracker* et, GError** error)
     iface = GEYE_EYETRACKER_GET_IFACE(et);
     g_return_if_fail(iface->start_tracking != NULL);
     iface->start_tracking(et, error);
+}
+
+void
+geye_eyetracker_stop_tracking(GEyeEyetracker* et)
+{
+    GEyeEyetrackerInterface* iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->stop_tracking != NULL);
+    iface->stop_tracking(et);
 }
 
 void

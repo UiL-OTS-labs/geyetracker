@@ -33,8 +33,20 @@ G_MODULE_EXPORT
 G_DECLARE_FINAL_TYPE(GEyeEyelinkEt, geye_eyelink_et, GEYE, EYELINK_ET, GObject)
 
 G_MODULE_EXPORT GEyeEyelinkEt*
-g_eyelink_et_new(void);
+geye_eyelink_et_new(void);
 
+G_MODULE_EXPORT void
+geye_eyelink_et_destroy(GEyeEyelinkEt* self);
+
+G_MODULE_EXPORT void
+geye_eyelink_et_set_simulated(
+        GEyeEyelinkEt  *self,
+        gboolean        simulated,
+        GError        **error
+        );
+
+G_MODULE_EXPORT gboolean
+geye_eyelink_et_get_simulated(GEyeEyelinkEt* self);
 
 G_END_DECLS 
 
