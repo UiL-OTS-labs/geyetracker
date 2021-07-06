@@ -103,6 +103,53 @@ geye_eyetracker_stop_tracking(GEyeEyetracker* et)
     g_return_if_fail(iface->stop_tracking != NULL);
     iface->stop_tracking(et);
 }
+void
+geye_eyetracker_start_recording(GEyeEyetracker* et, GError** error)
+{
+    GEyeEyetrackerInterface* iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->start_recording != NULL);
+    iface->start_recording(et, error);
+}
+
+void
+geye_eyetracker_stop_recording(GEyeEyetracker* et)
+{
+    GEyeEyetrackerInterface* iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->stop_recording != NULL);
+    iface->stop_recording(et);
+}
+
+void
+geye_eyetracker_start_setup(GEyeEyetracker* et)
+{
+    GEyeEyetrackerInterface *iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->start_setup != NULL);
+    iface->start_setup(et);
+}
+
+void
+geye_eyetracker_stop_setup(GEyeEyetracker* et)
+{
+    GEyeEyetrackerInterface *iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->stop_setup != NULL);
+    iface->stop_setup(et);
+}
 
 void
 geye_eyetracker_calibrate(GEyeEyetracker* et, GError** error)
@@ -128,5 +175,59 @@ geye_eyetracker_validate(GEyeEyetracker* et, GError** error)
     iface->validate(et, error);
 }
 
+void
+geye_eyetracker_set_calibration_start_cb(GEyeEyetracker        *et,
+                                         geye_start_call_func   cb,
+                                         gpointer               data)
+{
+    GEyeEyetrackerInterface* iface;
 
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->set_calibration_start_cb != NULL);
+    iface->set_calibration_start_cb(et, cb, data);
+}
+
+void
+geye_eyetracker_set_calibration_stop_cb (GEyeEyetracker        *et,
+                                         geye_stop_call_func    cb,
+                                         gpointer               data)
+{
+    GEyeEyetrackerInterface* iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->set_calibration_stop_cb != NULL);
+    iface->set_calibration_stop_cb(et, cb, data);
+}
+
+void
+geye_eyetracker_set_calpoint_start_cb (GEyeEyetracker            *et,
+                                        geye_calpoint_start_func  cb,
+                                        gpointer                   data)
+{
+    GEyeEyetrackerInterface* iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->set_calpoint_start_cb != NULL);
+    iface->set_calpoint_start_cb(et, cb, data);
+}
+
+void
+geye_eytracker_set_calpoint_stop_cb   (GEyeEyetracker            *et,
+                                        geye_calpoint_start_func  cb,
+                                        gpointer                   data)
+{
+    GEyeEyetrackerInterface *iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->set_calpoint_stop_cb != NULL);
+    iface->set_calpoint_stop_cb(et, cb, data);
+}
 

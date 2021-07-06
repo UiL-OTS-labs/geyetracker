@@ -113,19 +113,82 @@ eyelink_tracking(void)
 
     g_usleep(100000);
 
-    geye_eyelink_et_destroy(et);
+    geye_eyetracker_stop_tracking(et);
+    g_object_get(et, "tracking", &tracking, NULL);
+    g_assert_false(tracking);
+
+    geye_eyelink_et_destroy(eyelink);
 }
 
+/*
 static void
 eyelink_recording(void)
 {
     GEyeEyelinkEt   *et;
-    GError         **error = NULL;
+    GError          *error = NULL;
+    gboolean         recording;
 
     et = geye_eyelink_et_new();
 
+    geye_eyetracker_connect(GEYE_EYETRACKER(et), &error);
+    g_assert_no_error(error);
+
+    geye_eyetracker_start_recording(GEYE_EYETRACKER(et), &error);
+    g_assert_no_error(error);
+
+    g_object_get(et, "recording", &recording, NULL);
+    g_assert_true(recording);
+
+    geye_eyetracker_stop_recording(GEYE_EYETRACKER(et));
+
+    g_object_get(et, "recording", &recording, NULL);
+    g_assert_false(recording);
+
     geye_eyelink_et_destroy(et);
 }
+*/
+
+static void
+eyelink_run_setup(void)
+{
+    GEyeEyelinkEt   *el;
+    GEyeEyetracker  *et;
+    GError          *error = NULL;
+
+    el = geye_eyelink_et_new();
+    et = GEYE_EYETRACKER(el);
+
+    geye_eyetracker_connect(et, &error);
+    g_assert_no_error(error);
+
+    geye_eyetracker_start_setup(et);
+
+    g_usleep(2e6);
+
+    geye_eyetracker_stop_setup(et);
+
+    geye_eyelink_et_destroy(el);
+}
+
+//static void
+//eyelink_run_setup_exit_escape(void)
+//{
+//    GEyeEyelinkEt   *el;
+//    GEyeEyetracker  *et;
+//    GError          *error = NULL;
+//
+//    el = geye_eyelink_et_new();
+//    et = GEYE_EYETRACKER(el);
+//
+//    geye_eyetracker_connect(et, &error);
+//    g_assert_no_error(error);
+//
+//    geye_eyetracker_start_setup(et);
+//
+//    g_print("Press escape on Eyelink Host to quit this test.\n");
+//
+//    geye_eyelink_et_destroy(el);
+//}
 
 int main(int argc, char** argv)
 {
@@ -146,9 +209,18 @@ int main(int argc, char** argv)
     g_test_add_func(
             "/EyelinkEt/start_tracking", eyelink_tracking
     );
+    //g_test_add_func(
+    //        "/EyelinkEt/start_recording", eyelink_recording
+    //);
+
     g_test_add_func(
-            "/EyelinkEt/start_recording", eyelink_recording
-    );
+            "/EyelinkEt/run_setup", eyelink_run_setup
+            );
+
+// This test doesn't work...
+//    g_test_add_func(
+//            "/EyelinkEt/run_setup_exit_escape", eyelink_run_setup_exit_escape
+//    );
 
     return g_test_run();
 }

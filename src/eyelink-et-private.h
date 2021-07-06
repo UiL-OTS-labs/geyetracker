@@ -35,8 +35,14 @@ struct _GEyeEyelinkEt {
     gboolean     connected;
     gboolean     tracking;
     gboolean     recording;
+    /* Talk from instance to thread */
     GAsyncQueue* instance_to_thread;
+    /* Replies are send back via this queue */
     GAsyncQueue* thread_to_instance;
+    /* When the do_tracker_setup_is_called it blocks, this
+     * queue can be used to talk from the hooks/callbacks
+     */
+    GAsyncQueue* tracker_setup_queue;
 };
 
 GThread* eyelink_thread_start(GEyeEyelinkEt* self);
@@ -50,6 +56,9 @@ void     eyelink_thread_stop_tracking(GEyeEyelinkEt* self);
 
 void     eyelink_thread_start_recording(GEyeEyelinkEt* self, GError** error);
 void     eyelink_thread_stop_recording(GEyeEyelinkEt* self);
+
+void     eyelink_thread_start_setup(GEyeEyelinkEt* et);
+void     eyelink_thread_stop_setup(GEyeEyelinkEt* et);
 
 G_END_DECLS 
 

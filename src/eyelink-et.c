@@ -34,13 +34,14 @@ G_DEFINE_TYPE_WITH_CODE(GEyeEyelinkEt,
                         )
 static void
 geye_eyelink_et_init(GEyeEyelinkEt* self) {
-    self->stop_thread       = FALSE;
-    self->connected         = FALSE;
-    self->simulated         = FALSE;
-    self->recording         = FALSE;
-    self->tracking          = FALSE;
-    self->instance_to_thread= g_async_queue_new_full(g_free);
-    self->thread_to_instance= g_async_queue_new_full(g_free);
+    self->stop_thread           = FALSE;
+    self->connected             = FALSE;
+    self->simulated             = FALSE;
+    self->recording             = FALSE;
+    self->tracking              = FALSE;
+    self->instance_to_thread    = g_async_queue_new_full(g_free);
+    self->thread_to_instance    = g_async_queue_new_full(g_free);
+    self->tracker_setup_queue   = g_async_queue_new_full(g_free);
 
     // keep this last, otherwise the queue might be NULL
     self->eyelink_thread    = eyelink_thread_start(self);
@@ -83,6 +84,18 @@ eyelink_et_stop_recording(GEyeEyetracker* self)
 }
 
 static void
+eyelink_et_start_setup(GEyeEyetracker* self)
+{
+    eyelink_thread_start_setup(GEYE_EYELINK_ET(self));
+}
+
+static void
+eyelink_et_stop_setup(GEyeEyetracker* self)
+{
+    eyelink_thread_stop_setup(GEYE_EYELINK_ET(self));
+}
+
+static void
 geye_eyetracker_interface_init(GEyeEyetrackerInterface* iface)
 {
     iface->connect          = eyelink_et_connect;
@@ -93,6 +106,15 @@ geye_eyetracker_interface_init(GEyeEyetrackerInterface* iface)
 
     iface->start_recording  = eyelink_et_start_recording;
     iface->stop_recording   = eyelink_et_stop_recording;
+
+    iface->start_setup      = eyelink_et_start_setup;
+    iface->stop_setup       = eyelink_et_stop_setup;
+
+    // ToDo
+//    iface->set_calibration_start_cb = eyelink_et_set_calibration_start_cb;
+//    iface->set_calibration_stop_cb  = eyelink_et_set_calibration_stop_cb;
+//    iface->set_calpoint_start_cb    = eyelink_et_set_calpoint_start_cb;
+//    iface->set_calpoint_stop_cb     = eyelink_et_set_calpoint_stop_cb;
 }
 
 static void
@@ -113,6 +135,9 @@ eyelink_et_dispose(GObject* gobject)
 
     g_async_queue_unref(self->instance_to_thread);
     self->instance_to_thread = NULL;
+
+    g_async_queue_unref(self->tracker_setup_queue);
+    self->tracker_setup_queue = NULL;
 
     G_OBJECT_CLASS(geye_eyelink_et_parent_class)->dispose(gobject);
 }

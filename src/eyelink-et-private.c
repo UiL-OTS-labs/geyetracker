@@ -22,7 +22,9 @@
 #include "eyetracker-error.h"
 #include <EyeLink/core_expt.h>
 
-const char* EYELINK_THREAD_NAME = "Eyelink-thread";
+static const char* EYELINK_THREAD_NAME = "Eyelink-thread";
+static gsize       EYELINK_PIXEL_SIZE = 4; //RGBA
+
 
 typedef enum {
     ET_STOP,
@@ -36,13 +38,18 @@ typedef enum {
     ET_START_TRACKING,
     ET_STOP_TRACKING,
     ET_START_RECORDING,
-    ET_STOP_RECORDING
+    ET_STOP_RECORDING,
+    ET_START_SETUP,
+    ET_STOP_SETUP,
+    ET_SETUP_KEY
 } ThreadMsgType;
 
 
 typedef struct {
     ThreadMsgType type;
-    GVariant* content;
+    union ThreadContent {
+        InputEvent event;
+    } content;
 } ThreadMsg;
 
 static void
@@ -180,6 +187,19 @@ et_stop_recording(GEyeEyelinkEt* self)
     msg->type = ET_ACKNOWLEDGE;
     et_reply(self, msg);
 }
+
+static void
+et_start_setup(GEyeEyelinkEt* self)
+{
+    (void) self;
+    eyelink_set_tracker_setup_default(0); // 1 = image, 0 = menu
+    int ret = eyelink_start_setup();
+    g_assert(ret == 0);
+    ret = eyelink_wait_for_mode_ready(100);
+    g_assert(ret == 0);
+    do_tracker_setup();
+}
+
 static void
 handle_msg(GEyeEyelinkEt* self, ThreadMsg* msg)
 {
@@ -208,6 +228,9 @@ handle_msg(GEyeEyelinkEt* self, ThreadMsg* msg)
         case ET_STOP_RECORDING:
             et_stop_recording(self);
             break;
+        case ET_START_SETUP:
+            et_start_setup(self);
+            break;
         case ET_ACKNOWLEDGE:
         case ET_CONNECTED:
         case ET_CONNECTED_ERROR:
@@ -230,8 +253,6 @@ monitor_main_thread(GEyeEyelinkEt* self, gboolean sleep)
 
     if (msg) {
         handle_msg(self, msg);
-        if (msg->content)
-            g_variant_unref(msg->content);
         g_free(msg);
         return TRUE;
     }
@@ -244,21 +265,110 @@ handle_events(GEyeEyelinkEt* self)
     int eye;
     gboolean received_something = FALSE;
     int event_type;
-    ALLF_DATA event;
+    ALLD_DATA event;
     while ((event_type = eyelink_get_next_data(NULL)) != 0) {
         received_something = TRUE;
         eye = eyelink_eye_available();
-        eyelink_get_float_data(&event);
+        eyelink_get_double_data(&event);
         g_print("We've gotten an event %d\n", event_type);
         switch (event_type) {
+            case SAMPLE_TYPE:
+                if (eye == LEFT) {
+
+                }
+                else if (eye == RIGHT) {
+
+                }
             
         }
     }
     return received_something;
 }
 
+/* *********** eyelink hookv2 functions ************ */
+
+gint16 eyelink_hook_setup_cal_display(void* data)
+{
+    g_print("in setup cal display\n");
+    GEyeEyelinkEt *self = data;
+    return 0;
+}
+
+
+static gint16
+eyelink_hook_setup_image_display(gpointer data, gint16 width, gint16 height)
+{
+    gsize imbufsz = width * height * EYELINK_PIXEL_SIZE;
+    g_print("Setup image display %d %d %lu", width, height, imbufsz);
+}
+
+gint16 eyelink_hook_draw_image(
+                void* data, gint16 width, gint16 height, guint8* bytes
+        )
+{
+    int w = width;
+    int h = height;
+    g_print("in draw image %p, %d, %d %p\n", data, w, h, bytes);
+    //exit_calibration();
+    return 0;
+}
+
+static gint16
+eyelink_hook_input_key(void* data, InputEvent* key_input)
+{
+    GEyeEyelinkEt *self = data;
+
+    ThreadMsg *msg = g_async_queue_try_pop(self->tracker_setup_queue);
+    if (msg) {
+        switch(msg->type) {
+            case ET_STOP_SETUP:
+                exit_calibration();
+                break;
+            case ET_SETUP_KEY:
+                *key_input = msg->content.event;
+                break;
+            default:
+                g_assert_not_reached();
+        }
+
+        g_print("KEY_INPUT_EVENT %4x %4x\n",
+                key_input->key.key, key_input->key.modifier);
+        g_free(msg);
+    }
+
+
+    return 0;
+}
+
+
+/* ************** thread entry point ************** */
+
 gpointer eyelink_thread(gpointer data) {
     GEyeEyelinkEt* self = GEYE_EYELINK_ET(data);
+
+    HOOKFCNS2 hooks2 = {
+        .major = 1,
+        .userData = self,
+        // calibration / validation
+        .setup_cal_display_hook = eyelink_hook_setup_cal_display,
+        .draw_cal_target_hook = NULL,
+        .erase_cal_target_hook = NULL,
+        .clear_cal_display_hook = NULL,
+        .exit_cal_display_hook = NULL,
+        // setup
+        .setup_image_display_hook = eyelink_hook_setup_image_display,
+        .image_title_hook = NULL,
+        .draw_image = eyelink_hook_draw_image,
+        .exit_image_display_hook = NULL,
+
+        // send keys to eyelink.
+        .get_input_key_hook = eyelink_hook_input_key
+    };
+
+    int ret = setup_graphic_hook_functions_V2(&hooks2);
+    if (ret) {
+        g_critical("Unable to setup hook functions");
+    }
 
     while (!self->stop_thread) {
         gboolean didsomething = FALSE;
@@ -404,4 +514,28 @@ void eyelink_thread_stop_recording(GEyeEyelinkEt* self)
         g_warning("The eyelink thread didn't acknowledge stop recording");
     self->recording = FALSE;
     g_free(msg);
+}
+
+void eyelink_thread_start_setup(GEyeEyelinkEt* self)
+{
+    ThreadMsg* msg;
+    if (!self->connected)
+        return;
+
+    msg = g_malloc0(sizeof(ThreadMsg));
+    msg->type = ET_START_SETUP;
+    et_send_message(self, msg);
+    // The eyetracker is blocking on do_tracker_setup();
+    // so don't wait for reply.
+}
+
+void eyelink_thread_stop_setup(GEyeEyelinkEt* self)
+{
+    ThreadMsg *msg;
+    if (!self->connected)
+        return;
+
+    msg = g_malloc0(sizeof(ThreadMsg));
+    msg->type = ET_STOP_SETUP;
+    g_async_queue_push(self->tracker_setup_queue, msg);
 }
