@@ -96,6 +96,80 @@ eyelink_et_stop_setup(GEyeEyetracker* self)
 }
 
 static void
+eyelink_et_calibrate(GEyeEyetracker* self, GError **error)
+{
+    eyelink_thread_calibrate(GEYE_EYELINK_ET(self), error);
+}
+
+static void
+eyelink_et_validate(GEyeEyetracker* self, GError **error)
+{
+    eyelink_thread_validate(GEYE_EYELINK_ET(self), error);
+}
+
+static guint
+eyelink_et_get_num_calpoints(GEyeEyetracker* et)
+{
+    GEyeEyelinkEt *self = GEYE_EYELINK_ET(et);
+    return self->num_calpoints;
+}
+
+static void
+eyelink_et_set_num_calpoints(GEyeEyetracker* et, guint n)
+{
+    GEyeEyelinkEt *self = GEYE_EYELINK_ET(et);
+    // Eyelink API supports 3, 5, 9 and 13
+    if (n <= 3)
+        self->num_calpoints = 3;
+    else if (n <= 5)
+        self->num_calpoints = 5;
+    else if (n <= 9)
+        self->num_calpoints = 9;
+    else
+        self->num_calpoints = 13;
+}
+
+static void
+eyelink_et_set_calibration_start_cb (GEyeEyetracker     *et,
+                                     geye_start_cal_func cb,
+                                     gpointer            data)
+{
+    GEyeEyelinkEt *self = GEYE_EYELINK_ET(et);
+    self->cb_start_calibration = cb;
+    self->cb_start_calibration_data = data;
+}
+
+static void
+eyelink_et_set_calibration_stop_cb(GEyeEyetracker    *et,
+                                   geye_stop_cal_func cb,
+                                   gpointer           data)
+{
+    GEyeEyelinkEt *self = GEYE_EYELINK_ET(et);
+    self->cb_stop_calibration = cb;
+    self->cb_stop_calibration_data = data;
+}
+
+static void
+eyelink_et_set_calpoint_start_cb(GEyeEyetracker          *et,
+                                 geye_calpoint_start_func cb,
+                                 gpointer                 data)
+{
+    GEyeEyelinkEt *self = GEYE_EYELINK_ET(et);
+    self->cb_calpoint_start = cb;
+    self->cb_calpoint_start_data = data;
+}
+
+static void
+eyelink_et_set_calpoint_stop_cb(GEyeEyetracker          *et,
+                                geye_calpoint_stop_func  cb,
+                                gpointer                 data)
+{
+    GEyeEyelinkEt *self = GEYE_EYELINK_ET(et);
+    self->cb_calpoint_stop = cb;
+    self->cb_calpoint_stop_data = data;
+}
+
+static void
 geye_eyetracker_interface_init(GEyeEyetrackerInterface* iface)
 {
     iface->connect          = eyelink_et_connect;
@@ -110,11 +184,16 @@ geye_eyetracker_interface_init(GEyeEyetrackerInterface* iface)
     iface->start_setup      = eyelink_et_start_setup;
     iface->stop_setup       = eyelink_et_stop_setup;
 
-    // ToDo
-//    iface->set_calibration_start_cb = eyelink_et_set_calibration_start_cb;
-//    iface->set_calibration_stop_cb  = eyelink_et_set_calibration_stop_cb;
-//    iface->set_calpoint_start_cb    = eyelink_et_set_calpoint_start_cb;
-//    iface->set_calpoint_stop_cb     = eyelink_et_set_calpoint_stop_cb;
+    iface->calibrate        = eyelink_et_calibrate;
+    iface->validate         = eyelink_et_validate;
+
+    iface->get_num_calpoints= eyelink_et_get_num_calpoints;
+    iface->set_num_calpoints= eyelink_et_set_num_calpoints;
+
+    iface->set_calibration_start_cb = eyelink_et_set_calibration_start_cb;
+    iface->set_calibration_stop_cb  = eyelink_et_set_calibration_stop_cb;
+    iface->set_calpoint_start_cb    = eyelink_et_set_calpoint_start_cb;
+    iface->set_calpoint_stop_cb     = eyelink_et_set_calpoint_stop_cb;
 }
 
 static void
@@ -122,9 +201,6 @@ eyelink_et_dispose(GObject* gobject)
 {
     GEyeEyelinkEt* self = GEYE_EYELINK_ET(gobject);
 
-    g_free(self->ip_address);
-    self->ip_address =NULL;
-    
     // stop eyelink thread
     if (self->eyelink_thread)
         eyelink_thread_stop(self);
@@ -156,7 +232,8 @@ typedef enum {
     N_PROPERTIES,
     PROP_CONNECTED,
     PROP_TRACKING,
-    PROP_RECORDING
+    PROP_RECORDING,
+    PROP_NUM_CALPOINTS
 }GEyeEyelinkEtProperty;
 
 static GParamSpec* obj_properties[N_PROPERTIES] = {NULL, };
@@ -169,10 +246,14 @@ geye_eyelink_et_set_property(GObject       *obj,
                              )
 {
     GEyeEyelinkEt* self = GEYE_EYELINK_ET(obj);
+    GEyeEyetracker* et = GEYE_EYETRACKER(self);
     (void) self;
     (void) value;
 
     switch((GEyeEyelinkEtProperty) property_id) {
+        case PROP_NUM_CALPOINTS:
+            geye_eyetracker_set_num_calpoints(et, g_value_get_uint(value));
+            break;
         case PROP_SIMULATED:
         case PROP_CONNECTED:
         case PROP_NULL:
@@ -201,6 +282,9 @@ geye_eyelink_et_get_property(GObject       *obj,
             break;
         case PROP_TRACKING:
             g_value_set_boolean(value, self->tracking);
+            break;
+        case PROP_NUM_CALPOINTS:
+            g_value_set_uint(value, self->num_calpoints);
             break;
         case PROP_NULL:
         default:
@@ -233,6 +317,9 @@ geye_eyelink_et_class_init(GEyeEyelinkEtClass* klass)
     g_object_class_override_property(object_class, PROP_CONNECTED, "connected");
     g_object_class_override_property(object_class, PROP_TRACKING, "tracking");
     g_object_class_override_property(object_class, PROP_RECORDING, "recording");
+    g_object_class_override_property(
+            object_class, PROP_NUM_CALPOINTS, "num-calpoints"
+            );
 }
 
 /* ***************************** public functions *************************** */

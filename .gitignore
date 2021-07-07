@@ -53,3 +53,7 @@ dkms.conf
 
 # vim temporary files
 *.sw[opq]
+
+# IDE files
+**.idea*
+**compile_commands.json*

@@ -54,6 +54,17 @@ geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
     );
     g_object_interface_install_property(iface, spec);
 
+    spec = g_param_spec_uint(
+            "num-calpoints",
+            "NumCalpoints",
+            "The number of calibration points used for calibration",
+            0,
+            G_MAXUINT,
+            9,
+            G_PARAM_READWRITE | G_PARAM_CONSTRUCT
+            );
+    g_object_interface_install_property(iface, spec);
+
 }
 
 void
@@ -176,8 +187,44 @@ geye_eyetracker_validate(GEyeEyetracker* et, GError** error)
 }
 
 void
+geye_eyetracker_set_num_calpoints(GEyeEyetracker* et, guint n)
+{
+    GEyeEyetrackerInterface* iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->set_num_calpoints != NULL);
+    iface->set_num_calpoints(et, n);
+}
+
+guint
+geye_eyetracker_get_num_calpoints(GEyeEyetracker* et)
+{
+    GEyeEyetrackerInterface* iface;
+
+    g_return_val_if_fail(GEYE_IS_EYETRACKER(et), 0);
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_val_if_fail(iface->get_num_calpoints != NULL, 0);
+    return iface->get_num_calpoints(et);
+}
+
+void
+geye_eyetracker_trigger_calpoint(GEyeEyetracker* et, GError** error)
+{
+    GEyeEyetrackerInterface* iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->trigger_calpoint != NULL);
+    iface->trigger_calpoint(et, error);
+}
+
+void
 geye_eyetracker_set_calibration_start_cb(GEyeEyetracker        *et,
-                                         geye_start_call_func   cb,
+                                         geye_start_cal_func    cb,
                                          gpointer               data)
 {
     GEyeEyetrackerInterface* iface;
@@ -191,7 +238,7 @@ geye_eyetracker_set_calibration_start_cb(GEyeEyetracker        *et,
 
 void
 geye_eyetracker_set_calibration_stop_cb (GEyeEyetracker        *et,
-                                         geye_stop_call_func    cb,
+                                         geye_stop_cal_func     cb,
                                          gpointer               data)
 {
     GEyeEyetrackerInterface* iface;
@@ -206,7 +253,7 @@ geye_eyetracker_set_calibration_stop_cb (GEyeEyetracker        *et,
 void
 geye_eyetracker_set_calpoint_start_cb (GEyeEyetracker            *et,
                                         geye_calpoint_start_func  cb,
-                                        gpointer                   data)
+                                        gpointer                  data)
 {
     GEyeEyetrackerInterface* iface;
 
@@ -218,9 +265,9 @@ geye_eyetracker_set_calpoint_start_cb (GEyeEyetracker            *et,
 }
 
 void
-geye_eytracker_set_calpoint_stop_cb   (GEyeEyetracker            *et,
-                                        geye_calpoint_start_func  cb,
-                                        gpointer                   data)
+geye_eyetracker_set_calpoint_stop_cb  (GEyeEyetracker          *et,
+                                       geye_calpoint_stop_func cb,
+                                       gpointer                data)
 {
     GEyeEyetrackerInterface *iface;
 

@@ -190,6 +190,74 @@ eyelink_run_setup(void)
 //    geye_eyelink_et_destroy(el);
 //}
 
+typedef struct CallbackData {
+    GEyeEyetracker *et;
+    gboolean        called;
+    gint            n_calls;
+    gboolean        et_the_same;
+} CallbackData;
+
+static void
+cal_start_stop_cb(GEyeEyetracker* et, gpointer data)
+{
+    CallbackData *td_ptr = data;
+    td_ptr->called      = TRUE;
+    td_ptr->n_calls++;
+    td_ptr->et_the_same = td_ptr->et == et;
+}
+
+static void
+cal_point_start_cb(GEyeEyetracker* et, gdouble x, gdouble y, gpointer data)
+{
+    (void) x, (void) y;
+    CallbackData *td_ptr = data;
+    td_ptr->called = TRUE;
+    td_ptr->n_calls++;
+    td_ptr->et_the_same = td_ptr->et == et;
+}
+
+static void
+eyelink_calibrate(void)
+{
+    GEyeEyelinkEt   *el;
+    GEyeEyetracker  *et;
+    GError          *error = NULL;
+
+    el = geye_eyelink_et_new();
+    et = GEYE_EYETRACKER(el);
+
+    CallbackData data_start         = {.et = et};
+    CallbackData data_stop          = {.et = et};
+    CallbackData data_point_start   = {.et = et};
+    CallbackData data_point_stop    = {.et = et};
+
+    geye_eyetracker_set_calibration_start_cb(et, cal_start_stop_cb, &data_start);
+    geye_eyetracker_set_calibration_stop_cb(et, cal_start_stop_cb, &data_stop);
+    geye_eyetracker_set_calpoint_start_cb(et, cal_point_start_cb, &data_point_start);
+    geye_eyetracker_set_calpoint_stop_cb(et, cal_start_stop_cb, &data_point_stop);
+
+    geye_eyetracker_connect(et, &error);
+    g_assert_no_error(error);
+
+    geye_eyetracker_calibrate(et, &error);
+
+    for (guint i = 0; i < geye_eyetracker_get_num_calpoints(et); ++i) {
+        g_usleep((guint64)2.5e5);
+        geye_eyetracker_trigger_calpoint(et, &error);
+        g_assert_no_error(error);
+    }
+    g_usleep((guint)2.5e5);
+
+    g_assert_true(data_start.et_the_same);
+    g_assert_true(data_stop.et_the_same);
+    g_assert_true(data_point_start.et_the_same);
+    g_assert_true(data_point_stop.et_the_same);
+
+
+    geye_eyelink_et_destroy(el);
+
+}
+
 int main(int argc, char** argv)
 {
     setlocale(LC_ALL, "");
@@ -209,6 +277,7 @@ int main(int argc, char** argv)
     g_test_add_func(
             "/EyelinkEt/start_tracking", eyelink_tracking
     );
+
     //g_test_add_func(
     //        "/EyelinkEt/start_recording", eyelink_recording
     //);
@@ -221,6 +290,8 @@ int main(int argc, char** argv)
 //    g_test_add_func(
 //            "/EyelinkEt/run_setup_exit_escape", eyelink_run_setup_exit_escape
 //    );
+
+    g_test_add_func("/EyelinkEt/calibrate", eyelink_calibrate);
 
     return g_test_run();
 }

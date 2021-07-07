@@ -35,6 +35,7 @@ struct _GEyeEyelinkEt {
     gboolean     connected;
     gboolean     tracking;
     gboolean     recording;
+    guint        num_calpoints;
     /* Talk from instance to thread */
     GAsyncQueue* instance_to_thread;
     /* Replies are send back via this queue */
@@ -43,22 +44,42 @@ struct _GEyeEyelinkEt {
      * queue can be used to talk from the hooks/callbacks
      */
     GAsyncQueue* tracker_setup_queue;
+
+    /*
+     * Callbacks for end users, although using signals is
+     * more GNOME ideomatic.
+     */
+
+    geye_start_cal_func      cb_start_calibration;
+    gpointer                 cb_start_calibration_data;
+
+    geye_stop_cal_func       cb_stop_calibration;
+    gpointer                 cb_stop_calibration_data;
+
+    geye_calpoint_start_func cb_calpoint_start;
+    gpointer                 cb_calpoint_start_data;
+
+    geye_calpoint_stop_func  cb_calpoint_stop;
+    gpointer                 cb_calpoint_stop_data;
 };
 
-GThread* eyelink_thread_start(GEyeEyelinkEt* self);
-void     eyelink_thread_stop(GEyeEyelinkEt*  self);
+GThread* eyelink_thread_start(GEyeEyelinkEt *self);
+void     eyelink_thread_stop(GEyeEyelinkEt  *self);
 
-void     eyelink_thread_connect(GEyeEyelinkEt* self, GError** error);
-void     eyelink_thread_disconnect(GEyeEyelinkEt* self);
+void     eyelink_thread_connect(GEyeEyelinkEt *self, GError **error);
+void     eyelink_thread_disconnect(GEyeEyelinkEt *self);
 
-void     eyelink_thread_start_tracking(GEyeEyelinkEt* self, GError** error);
-void     eyelink_thread_stop_tracking(GEyeEyelinkEt* self);
+void     eyelink_thread_start_tracking(GEyeEyelinkEt *self, GError** error);
+void     eyelink_thread_stop_tracking(GEyeEyelinkEt  *self);
 
-void     eyelink_thread_start_recording(GEyeEyelinkEt* self, GError** error);
-void     eyelink_thread_stop_recording(GEyeEyelinkEt* self);
+void     eyelink_thread_start_recording(GEyeEyelinkEt *self, GError **error);
+void     eyelink_thread_stop_recording(GEyeEyelinkEt *self);
 
-void     eyelink_thread_start_setup(GEyeEyelinkEt* et);
-void     eyelink_thread_stop_setup(GEyeEyelinkEt* et);
+void     eyelink_thread_start_setup(GEyeEyelinkEt *self);
+void     eyelink_thread_stop_setup(GEyeEyelinkEt *self);
+
+void     eyelink_thread_calibrate(GEyeEyelinkEt* self, GError** error);
+void     eyelink_thread_validate(GEyeEyelinkEt* self, GError** error);
 
 G_END_DECLS 
 
