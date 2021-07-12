@@ -253,9 +253,7 @@ eyelink_calibrate(void)
     g_assert_true(data_point_start.et_the_same);
     g_assert_true(data_point_stop.et_the_same);
 
-
     geye_eyelink_et_destroy(el);
-
 }
 
 int main(int argc, char** argv)
