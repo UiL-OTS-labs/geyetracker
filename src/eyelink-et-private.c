@@ -443,6 +443,7 @@ eyelink_hook_input_key(void* data, InputEvent* key_input)
                         msg->content.event.key.modifier,
                         KB_PRESS
                         );
+                g_assert(result == OK_RESULT);
 //                g_print("KEY_INPUT_EVENT %4x %4x\n",
 //                        msg->content.event.key.key,
 //                        msg->content.event.key.modifier);

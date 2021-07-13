@@ -58,6 +58,7 @@ on_key_press(GtkWidget* darea, GdkEvent* event, gpointer data)
 
 typedef struct CalpointPars {
     GEyeEyetracker *et;
+    gboolean needs_dot;
     gdouble x;
     gdouble y;
     gpointer data;
@@ -69,7 +70,7 @@ on_calpoint_start(gpointer data)
     CalpointPars *pars = data;
     EyetrackerData *testdata = pars->data;
     testdata->is_calibrating = TRUE;
-    testdata->cal_data.needs_dot = TRUE;
+    testdata->cal_data.needs_dot = pars->needs_dot;
     testdata->cal_data.x = pars->x;
     testdata->cal_data.y = pars->y;
 
@@ -80,13 +81,31 @@ on_calpoint_start(gpointer data)
     return G_SOURCE_REMOVE;
 }
 
-void calpoint_start(GEyeEyetracker* et, gdouble x, gdouble y, gpointer data)
+gboolean
+on_calpoint_stop(gpointer data)
 {
-    g_print("%s: x = %lf, y = %lf\n", __func__, x, y);
+    CalpointPars *pars = data;
+    EyetrackerData *testdata = pars->data;
+    testdata->is_calibrating = TRUE;
+    testdata->cal_data.needs_dot = pars->needs_dot;
+    testdata->cal_data.x = pars->x;
+    testdata->cal_data.y = pars->y;
+
+    g_free(data);
+
+    gtk_widget_queue_draw(testdata->darea);
+
+    return G_SOURCE_REMOVE;
+}
+
+void
+calpoint_start(GEyeEyetracker* et, gdouble x, gdouble y, gpointer data)
+{
     CalpointPars * pars = g_malloc0(sizeof(CalpointPars));
     pars->et = et;
     pars->x = x;
     pars->y = y;
+    pars->needs_dot = TRUE;
     pars->data = data;
     GSource* calpoint_source = g_idle_source_new();
     g_source_set_callback(
@@ -95,6 +114,25 @@ void calpoint_start(GEyeEyetracker* et, gdouble x, gdouble y, gpointer data)
             pars,
             NULL
             );
+    g_source_attach(calpoint_source, g_main_context_default());
+}
+
+void
+calpoint_stop(GEyeEyetracker* et, gpointer data)
+{
+    CalpointPars * pars = g_malloc0(sizeof(CalpointPars));
+    pars->et = et;
+    pars->x = 0;
+    pars->y = 0;
+    pars->needs_dot = FALSE;
+    pars->data = data;
+    GSource* calpoint_source = g_idle_source_new();
+    g_source_set_callback(
+            calpoint_source,
+            G_SOURCE_FUNC(on_calpoint_stop),
+            pars,
+            NULL
+    );
     g_source_attach(calpoint_source, g_main_context_default());
 }
 
@@ -188,7 +226,10 @@ select_eyetracker(GtkComboBox* widget, gpointer data)
             else {
                 geye_eyetracker_set_calpoint_start_cb(
                         testdata->et, calpoint_start, testdata
-                );
+                        );
+                geye_eyetracker_set_calpoint_stop_cb(
+                        testdata->et, calpoint_stop, testdata
+                        );
             }
         }
     }
@@ -207,7 +248,6 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
     height = gtk_widget_get_allocated_height(widget);
 
     gtk_render_background(context, cr, 0, 0, width, height);
-    g_print("on_draw: width = %d, height = %d\n", width, height);
 
     circle_rad = width/50;
     s_circle_rad = height/200;
@@ -215,7 +255,7 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
     cairo_rectangle(cr, 0, 0, width, height);
     cairo_fill(cr);
-    if (testdata->is_calibrating) {
+    if (testdata->is_calibrating && testdata->cal_data.needs_dot) {
         cairo_set_source_rgb(cr, 0.0, 0.0, 1.0);
         cairo_arc(
                 cr,
@@ -245,7 +285,7 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
 int main(int argc, char** argv)
 {
     GtkWidget* window, *darea, *cal_button, *val_button, *et_combo;
-    GtkWidget* grid;
+    GtkWidget* setup_button, *grid;
     gtk_init(&argc, &argv);
 
     EyetrackerData testdata = {
@@ -256,9 +296,10 @@ int main(int argc, char** argv)
 
     window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     grid = gtk_grid_new();
-    gtk_container_set_border_width(GTK_CONTAINER(grid), 4);
+    gtk_container_set_border_width(GTK_CONTAINER(grid), 10);
     cal_button = gtk_button_new_with_label("calibrate");
     val_button = gtk_button_new_with_label("validate");
+    setup_button = gtk_button_new_with_label("setup");
     darea = gtk_drawing_area_new();
     testdata.darea = darea;
 
@@ -276,10 +317,11 @@ int main(int argc, char** argv)
     et_combo = gtk_combo_box_text_new();
 
     gtk_container_add(GTK_CONTAINER(window), grid);
-    gtk_grid_attach(GTK_GRID(grid), darea, 0, 0, 4, 1);
+    gtk_grid_attach(GTK_GRID(grid), darea, 0, 0, 5, 1);
     gtk_grid_attach(GTK_GRID(grid), et_combo, 0, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), cal_button, 2, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), val_button, 3, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), setup_button, 2, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), cal_button, 3, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), val_button, 4, 1, 1, 1);
 
     for (size_t i = 0;
          i < sizeof(supported_eyetrackers)/sizeof(supported_eyetrackers[0]);
