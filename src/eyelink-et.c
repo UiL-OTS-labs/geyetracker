@@ -169,6 +169,13 @@ eyelink_et_set_calpoint_stop_cb(GEyeEyetracker          *et,
     self->cb_calpoint_stop_data = data;
 }
 
+static gboolean
+eyelink_et_send_key_press(GEyeEyetracker* et, guint16 key, guint modifiers)
+{
+    GEyeEyelinkEt *self = GEYE_EYELINK_ET(et);
+    eyelink_thread_send_key_press(GEYE_EYELINK_ET(self), key, modifiers);
+}
+
 static void
 geye_eyetracker_interface_init(GEyeEyetrackerInterface* iface)
 {
@@ -194,6 +201,8 @@ geye_eyetracker_interface_init(GEyeEyetrackerInterface* iface)
     iface->set_calibration_stop_cb  = eyelink_et_set_calibration_stop_cb;
     iface->set_calpoint_start_cb    = eyelink_et_set_calpoint_start_cb;
     iface->set_calpoint_stop_cb     = eyelink_et_set_calpoint_stop_cb;
+
+    iface->send_key_press   = eyelink_et_send_key_press;
 }
 
 static void
@@ -391,4 +400,25 @@ geye_eyelink_et_get_simulated(GEyeEyelinkEt* self)
 {
     g_return_val_if_fail(GEYE_IS_EYELINK_ET(self), FALSE);
     return self->simulated;
+}
+
+/**
+ * geye_eyelink_et_set_display_dimensions:
+ * @self: the eyelink instance
+ * @width: The width of the screen used for eyetracking
+ * @height: The height of the screen used for eyetracking
+ *
+ * It is necessary to call this routine at least prior to calibrating/validating
+ * When calibrating the GEyeEyelinkEt sends this info to the eyelink pc, this
+ * way the host pc or API can compute the coordinates where to set the
+ * calibration dots.
+ */
+void geye_eyelink_et_set_display_dimensions(
+        GEyeEyelinkEt* self, gdouble width, gdouble height
+        )
+{
+    g_return_if_fail(GEYE_IS_EYELINK_ET(self));
+
+    self->disp_width = width;
+    self->disp_height= height;
 }

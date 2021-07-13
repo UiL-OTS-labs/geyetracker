@@ -112,7 +112,6 @@ et_connect(GEyeEyelinkEt* self) {
         if (ret)
             g_warning("Unable to initialize the library");
 
-
         ret = set_eyelink_address(self->ip_address);
         if (ret)
             g_warning("Eyelink-Thread:Invalid ip address: \"%s\".",
@@ -125,7 +124,6 @@ et_connect(GEyeEyelinkEt* self) {
         mode = 0;
 
     if (open_eyelink_connection(mode)) {
-        //g_warning("Unable to connect to the eyelink eyetracker");
         ThreadMsg* msg = g_malloc0(sizeof(ThreadMsg));
         msg->type = ET_CONNECTED_ERROR;
         et_reply(self, msg);
@@ -230,38 +228,50 @@ et_start_setup(GEyeEyelinkEt* self)
     do_tracker_setup();
 }
 
-static void
-et_calibrate(GEyeEyelinkEt* self, guint ncaldots)
+static gboolean
+et_calibration_setup(GEyeEyelinkEt* self)
 {
-    (void) self;
     int ret;
-    if (ncaldots > 3)
-        ret = eyecmd_printf("calibration_type = HV%d", ncaldots);
-    else
-        ret = eyecmd_printf("calibration_type = H%d", ncaldots);
+    guint ndots = self->num_calpoints;
+    const char* screen_pixel_coords = "screen_pixel_coords = 0 0 %d %d";
 
+    ret = eyecmd_printf(
+            screen_pixel_coords,
+            (int) self->disp_width, (int) self->disp_height
+        );
     if (ret != OK_RESULT)
-        g_critical("Unable to setup calibration type ncaldots=%d", ncaldots);
+        g_critical("Unable to setup calibration display");
 
-    eyelink_set_tracker_setup_default(0); // 1 = image, 0 menu
-    eyelink_send_keybutton('c', 0, KB_PRESS);
-    do_tracker_setup();
+    if (ndots > 3)
+        ret = eyecmd_printf("calibration_type = HV%d", ndots);
+    else
+        ret = eyecmd_printf("calibration_type = H%d", ndots);
+
+    if (ret != OK_RESULT) {
+        g_critical("Unable to setup calibration type ncaldots=%d", ndots);
+        return FALSE;
+    }
+
+    return ret == OK_RESULT;
 }
 
 static void
-et_validate(GEyeEyelinkEt* self, guint ncaldots)
+et_calibrate(GEyeEyelinkEt* self)
 {
-    (void) self;
-    int ret;
-    if (ncaldots > 3)
-        ret = eyecmd_printf("calibration_type = HV%d", ncaldots);
-    else
-        ret = eyecmd_printf("calibration_type = H%d", ncaldots);
-
-    if (ret != OK_RESULT)
-        g_critical("Unable to setup calibration type ncaldots=%d", ncaldots);
-
+    et_calibration_setup(self);
     eyelink_set_tracker_setup_default(0); // 1 = image, 0 menu
+    eyelink_send_keybutton('c', 0, KB_PRESS);
+    int b = 2;
+    do_tracker_setup();
+    int a = 1;
+}
+
+static void
+et_validate(GEyeEyelinkEt* self)
+{
+    et_calibration_setup(self);
+    eyelink_set_tracker_setup_default(0); // 1 = image, 0 menu
+    eyelink_send_keybutton('v', 0, KB_PRESS);
     do_tracker_setup();
 }
 
@@ -297,10 +307,10 @@ handle_msg(GEyeEyelinkEt* self, ThreadMsg* msg)
             et_start_setup(self);
             break;
         case ET_CALIBRATE:
-            et_calibrate(self, msg->content.num_calpoints);
+            et_calibrate(self);
             break;
         case ET_VALIDATE:
-            et_validate(self, msg->content.num_calpoints);
+            et_validate(self);
             break;
         case ET_STOP_SETUP:
         case ET_ACKNOWLEDGE:
@@ -378,13 +388,21 @@ eyelink_hook_setup_cal_display(void* data)
 static gint16
 eyelink_hook_clear_cal_display(void* data)
 {
+    g_print("in %s:%d\n", __func__, __LINE__);
     GEyeEyelinkEt *self = data;
-    GEyeEyetracker *et = data;
     if (self->cb_stop_calibration) {
         self->cb_stop_calibration(
-                et, self->cb_stop_calibration_data
+                GEYE_EYETRACKER(self), self->cb_stop_calibration_data
         );
     }
+
+    // accept the calibration
+    ThreadMsg *msg = g_malloc0(sizeof(ThreadMsg));
+    msg->type = ET_SETUP_KEY;
+    msg->content.event.key.key = ENTER_KEY;
+    msg->content.event.key.state = KB_PRESS;
+    g_async_queue_push(self->tracker_setup_queue, msg);
+
     return 0;
 }
 
@@ -435,11 +453,17 @@ gint16 eyelink_hook_draw_image(
     return 0;
 }
 
-
 static gint16
 eyelink_hook_input_key(void* data, InputEvent* key_input)
 {
     GEyeEyelinkEt *self = data;
+
+    int result = eyelink_cal_result();
+    if (result != NO_REPLY) {
+        exit_calibration();
+        char msg[256];
+        eyelink_cal_message(msg);
+    }
 
     ThreadMsg *msg = g_async_queue_try_pop(self->tracker_setup_queue);
     if (msg) {
@@ -450,13 +474,13 @@ eyelink_hook_input_key(void* data, InputEvent* key_input)
             case ET_SETUP_KEY: //check whether this is handy or not...
             case ET_TOGGLE_IMAGES:
                 *key_input = msg->content.event;
+                g_print("KEY_INPUT_EVENT %4x %4x\n",
+                        key_input->key.key, key_input->key.modifier);
                 break;
             default:
                 g_assert_not_reached();
         }
 
-        g_print("KEY_INPUT_EVENT %4x %4x\n",
-                key_input->key.key, key_input->key.modifier);
         g_free(msg);
     }
 
@@ -468,7 +492,8 @@ eyelink_hook_input_key(void* data, InputEvent* key_input)
 /* ************** thread entry point ************** */
 
 gpointer
-eyelink_thread(gpointer data) {
+eyelink_thread(gpointer data)
+{
     GEyeEyelinkEt* self = GEYE_EYELINK_ET(data);
 
     HOOKFCNS2 hooks2 = {
@@ -692,9 +717,10 @@ eyelink_thread_calibrate(GEyeEyelinkEt* self, GError **error)
                 GEYE_EYETRACKER_ERROR_INCORRECT_MODE,
                 "The eyelink is not connected");
 
+    clear_tracker_setup_queue(self);
+
     msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_CALIBRATE;
-    msg->content.num_calpoints = self->num_calpoints;
     et_send_message(self, msg);
 }
 
@@ -709,8 +735,25 @@ eyelink_thread_validate(GEyeEyelinkEt* self, GError **error)
                 GEYE_EYETRACKER_ERROR_INCORRECT_MODE,
                 "The eyelink is not connected");
 
+    clear_tracker_setup_queue(self);
+
     msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_VALIDATE;
-    msg->content.num_calpoints = self->num_calpoints;
     et_send_message(self, msg);
+}
+
+gboolean
+eyelink_thread_send_key_press(GEyeEyelinkEt * self, guint16 key, guint modifiers)
+{
+    if (!self->connected)
+        return FALSE;
+
+    ThreadMsg *msg = g_malloc0(sizeof(ThreadMsg));
+    msg->type = ET_SETUP_KEY;
+    msg->content.event.key.key = key;
+    msg->content.event.key.modifier = modifiers;
+    msg->content.event.key.state = KB_PRESS;
+
+    g_async_queue_push(self->tracker_setup_queue, msg);
+    return TRUE;
 }

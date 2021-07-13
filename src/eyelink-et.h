@@ -32,6 +32,46 @@ G_BEGIN_DECLS
 G_MODULE_EXPORT
 G_DECLARE_FINAL_TYPE(GEyeEyelinkEt, geye_eyelink_et, GEYE, EYELINK_ET, GObject)
 
+struct _GEyeEyelinkEt {
+    GObject      parent;
+    char*        ip_address;
+    gboolean     simulated;
+    GThread*     eyelink_thread;
+    gboolean     stop_thread;
+    gboolean     connected;
+    gboolean     tracking;
+    gboolean     recording;
+    guint        num_calpoints;
+    gdouble      disp_width;
+    gdouble      disp_height;
+    /* Talk from instance to thread */
+    GAsyncQueue* instance_to_thread;
+    /* Replies are send back via this queue */
+    GAsyncQueue* thread_to_instance;
+    /* When the do_tracker_setup_is_called it blocks, this
+     * queue can be used to talk from the hooks/callbacks
+     */
+    GAsyncQueue* tracker_setup_queue;
+
+    /*
+     * Callbacks for end users, although using signals is
+     * more ideomatic in GNOME/glib applications.
+     */
+
+    geye_start_cal_func      cb_start_calibration;
+    gpointer                 cb_start_calibration_data;
+
+    geye_stop_cal_func       cb_stop_calibration;
+    gpointer                 cb_stop_calibration_data;
+
+    geye_calpoint_start_func cb_calpoint_start;
+    gpointer                 cb_calpoint_start_data;
+
+    geye_calpoint_stop_func  cb_calpoint_stop;
+    gpointer                 cb_calpoint_stop_data;
+};
+
+
 G_MODULE_EXPORT GEyeEyelinkEt*
 geye_eyelink_et_new(void);
 
@@ -39,7 +79,7 @@ G_MODULE_EXPORT void
 geye_eyelink_et_destroy(GEyeEyelinkEt* self);
 
 G_MODULE_EXPORT void
-geye_eyelink_et_set_simulated(
+geye_eyelink_et_set_simulated (
         GEyeEyelinkEt  *self,
         gboolean        simulated,
         GError        **error
@@ -47,6 +87,12 @@ geye_eyelink_et_set_simulated(
 
 G_MODULE_EXPORT gboolean
 geye_eyelink_et_get_simulated(GEyeEyelinkEt* self);
+
+G_MODULE_EXPORT void
+geye_eyelink_et_set_display_dimensions(
+        GEyeEyelinkEt*, gdouble width, gdouble height
+        );
+
 
 G_END_DECLS 
 

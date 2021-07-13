@@ -278,3 +278,16 @@ geye_eyetracker_set_calpoint_stop_cb  (GEyeEyetracker          *et,
     iface->set_calpoint_stop_cb(et, cb, data);
 }
 
+gboolean
+geye_eyetracker_send_key_press(GEyeEyetracker*  et,
+                               guint16          key,
+                               guint            modifiers)
+{
+    GEyeEyetrackerInterface *iface;
+
+    g_return_val_if_fail(GEYE_IS_EYETRACKER(et), FALSE);
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_val_if_fail(iface->send_key_press != NULL, FALSE);
+
+    return iface->send_key_press(et, key, modifiers);
+}

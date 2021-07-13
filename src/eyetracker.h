@@ -93,6 +93,10 @@ struct _GEyeEyetrackerInterface {
     void (*set_calpoint_stop_cb)    (GEyeEyetracker            *et,
                                      geye_calpoint_stop_func    cb,
                                      gpointer                   data);
+
+    gboolean (*send_key_press)      (GEyeEyetracker            *et,
+                                     guint16                    key_code,
+                                     guint                      modifiers);
 };
 
 G_MODULE_EXPORT void
@@ -159,6 +163,12 @@ G_MODULE_EXPORT void
 geye_eyetracker_set_calpoint_stop_cb   (GEyeEyetracker              *et,
                                         geye_calpoint_stop_func     cb,
                                         gpointer                    data);
+
+G_MODULE_EXPORT gboolean
+geye_eyetracker_send_key_press(GEyeEyetracker  *et,
+                               guint16          key_code,
+                               guint            modifiers);
+
 
 G_END_DECLS 
 

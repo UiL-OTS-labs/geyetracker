@@ -4,7 +4,7 @@
 #include <geye.h>
 
 const char* supported_eyetrackers[] = {
-//    "none",
+    "none",
     "eyelink"
 };
 
@@ -33,6 +33,29 @@ window_quit(GtkWidget* window, GdkEvent* event, gpointer data)
     return TRUE;
 }
 
+gboolean
+on_key_press(GtkWidget* darea, GdkEvent* event, gpointer data)
+{
+    (void) darea;
+    EyetrackerData *testdata = data;
+    GEyeEyetracker *et = testdata->et;
+
+    GdkEventType type = event->type;
+    g_assert(type == GDK_KEY_PRESS);
+
+    GdkEventKey* key_event = (GdkEventKey*) event;
+    guint state = key_event->state & (
+            GDK_SHIFT_MASK | GDK_CONTROL_MASK | GDK_MOD1_MASK
+            );
+
+    gboolean send = geye_eyetracker_send_key_press(
+            et,
+            key_event->keyval,
+            state
+            );
+    return TRUE;
+}
+
 typedef struct CalpointPars {
     GEyeEyetracker *et;
     gdouble x;
@@ -47,8 +70,9 @@ on_calpoint_start(gpointer data)
     EyetrackerData *testdata = pars->data;
     testdata->is_calibrating = TRUE;
     testdata->cal_data.needs_dot = TRUE;
-    testdata->cal_data.x = 100;
-    testdata->cal_data.y = 100;
+    testdata->cal_data.x = pars->x;
+    testdata->cal_data.y = pars->y;
+
     g_free(data);
 
     gtk_widget_queue_draw(testdata->darea);
@@ -58,7 +82,7 @@ on_calpoint_start(gpointer data)
 
 void calpoint_start(GEyeEyetracker* et, gdouble x, gdouble y, gpointer data)
 {
-    g_print("%s: x = %lf, y = %lf\n", x, y);
+    g_print("%s: x = %lf, y = %lf\n", __func__, x, y);
     CalpointPars * pars = g_malloc0(sizeof(CalpointPars));
     pars->et = et;
     pars->x = x;
@@ -82,16 +106,40 @@ cal_button_clicked(GtkWidget* button, gpointer data)
 
     EyetrackerData* testdata = data;
 
+    gint w = gtk_widget_get_allocated_width(testdata->darea);
+    gint h = gtk_widget_get_allocated_height(testdata->darea);
+
+    if (g_strcmp0(testdata->chosen_et, supported_eyetrackers[1]) == 0) {
+        geye_eyelink_et_set_display_dimensions(
+                GEYE_EYELINK_ET(testdata->et), w, h
+                );
+    }
+
+    gtk_widget_grab_focus(testdata->darea);
+
     geye_eyetracker_calibrate(testdata->et, NULL);
 }
 
 void
 val_button_clicked(GtkWidget* button, gpointer data)
 {
+    (void) button;
     g_print("%s data = %p\n", __func__, data);
 
-    (void) button, (void) data;
-    g_print("Validate button clicked.\n");
+    EyetrackerData* testdata = data;
+
+    gint w = gtk_widget_get_allocated_width(testdata->darea);
+    gint h = gtk_widget_get_allocated_height(testdata->darea);
+
+    if (g_strcmp0(testdata->chosen_et, supported_eyetrackers[1]) == 0) {
+        geye_eyelink_et_set_display_dimensions(
+                GEYE_EYELINK_ET(testdata->et), w, h
+        );
+    }
+
+    gtk_widget_grab_focus(testdata->darea);
+
+    geye_eyetracker_validate(testdata->et, NULL);
 }
 
 GEyeEyetracker *
@@ -112,33 +160,42 @@ select_eyetracker(GtkComboBox* widget, gpointer data)
     char* et_name = gtk_combo_box_text_get_active_text(
             GTK_COMBO_BOX_TEXT(widget)
             );
-    if (et_name && testdata) {
+    if (g_strcmp0(et_name, testdata->chosen_et) != 0) {
+
         if (testdata->chosen_et)
             g_free(testdata->chosen_et);
         testdata->chosen_et = et_name;
+        g_clear_object(&testdata->et);
         GEyeEyetracker* et = NULL;
-        if (g_strcmp0(et_name, supported_eyetrackers[0]) == 0) {
+        if (g_strcmp0(et_name, supported_eyetrackers[1]) == 0) {
             et = setup_eyelink();
         }
+        else
+            et = NULL;
 
-        if (et) {
-            if (testdata->et)
-                g_object_unref(testdata->et);
-            testdata->et = et;
-        }
+        testdata->et = et;
 
-        geye_eyetracker_connect(testdata->et, &error);
-        if (error) {
-            g_printerr("Unable to connect to eyetracker: %s", error->message);
-            g_clear_error(&error);
+        if (testdata->et) {
+
+            geye_eyetracker_connect(testdata->et, &error);
+            if (error) {
+                g_printerr(
+                        "Unable to connect to eyetracker: %s",
+                        error->message
+                        );
+                g_clear_error(&error);
+            }
+            else {
+                geye_eyetracker_set_calpoint_start_cb(
+                        testdata->et, calpoint_start, testdata
+                );
+            }
         }
-        geye_eyetracker_set_calpoint_start_cb(testdata->et, calpoint_start, testdata);
     }
 }
 
 gboolean
 on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
-    g_print("%s data = %p\n", __func__, data);
     guint width, height;
     EyetrackerData* testdata = data;
 
@@ -204,11 +261,17 @@ int main(int argc, char** argv)
     val_button = gtk_button_new_with_label("validate");
     darea = gtk_drawing_area_new();
     testdata.darea = darea;
+
+    GdkEventMask mask = gtk_widget_get_events(darea);
+    gtk_widget_set_events(darea,
+                          GDK_KEY_PRESS_MASK | mask
+                          );
+
     gtk_widget_set_size_request(darea, 900, 900);
     gtk_widget_set_hexpand(darea, TRUE);
     gtk_widget_set_vexpand(darea, TRUE);
-    gtk_widget_set_halign(darea, GTK_ALIGN_CENTER);
-    gtk_widget_set_valign(darea, GTK_ALIGN_CENTER);
+    gtk_widget_set_halign(darea, GTK_ALIGN_FILL);
+    gtk_widget_set_valign(darea, GTK_ALIGN_FILL);
 
     et_combo = gtk_combo_box_text_new();
 
@@ -257,6 +320,15 @@ int main(int argc, char** argv)
             G_CALLBACK(on_draw),
             &testdata
             );
+    g_signal_connect(
+            darea,
+            "key-press-event",
+            G_CALLBACK(on_key_press),
+            &testdata
+            );
+
+    gtk_widget_set_can_focus(darea, TRUE);
+    gtk_widget_grab_focus(darea);
 
     gtk_combo_box_set_active(GTK_COMBO_BOX(et_combo), 0);
     gtk_widget_show_all(window);
