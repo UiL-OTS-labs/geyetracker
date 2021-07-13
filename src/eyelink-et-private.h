@@ -45,6 +45,10 @@ void     eyelink_thread_stop_setup(GEyeEyelinkEt *self);
 void     eyelink_thread_calibrate(GEyeEyelinkEt* self, GError** error);
 void     eyelink_thread_validate(GEyeEyelinkEt* self, GError** error);
 
+gboolean eyelink_thread_send_key_press(
+                GEyeEyelinkEt* self, guint16 key, guint modifiers
+                );
+
 G_END_DECLS 
 
 #endif 

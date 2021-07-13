@@ -41,10 +41,9 @@ geye_eyelink_et_init(GEyeEyelinkEt* self) {
     self->tracking              = FALSE;
     self->instance_to_thread    = g_async_queue_new_full(g_free);
     self->thread_to_instance    = g_async_queue_new_full(g_free);
-    self->tracker_setup_queue   = g_async_queue_new_full(g_free);
 
     // keep this last, otherwise the queue might be NULL
-    self->eyelink_thread    = eyelink_thread_start(self);
+    self->eyelink_thread        = eyelink_thread_start(self);
 }
 
 static void
@@ -174,6 +173,7 @@ eyelink_et_send_key_press(GEyeEyetracker* et, guint16 key, guint modifiers)
 {
     GEyeEyelinkEt *self = GEYE_EYELINK_ET(et);
     eyelink_thread_send_key_press(GEYE_EYELINK_ET(self), key, modifiers);
+    return TRUE;
 }
 
 static void
@@ -220,9 +220,6 @@ eyelink_et_dispose(GObject* gobject)
 
     g_async_queue_unref(self->instance_to_thread);
     self->instance_to_thread = NULL;
-
-    g_async_queue_unref(self->tracker_setup_queue);
-    self->tracker_setup_queue = NULL;
 
     G_OBJECT_CLASS(geye_eyelink_et_parent_class)->dispose(gobject);
 }

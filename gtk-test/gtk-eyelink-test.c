@@ -43,14 +43,14 @@ on_key_press(GtkWidget* darea, GdkEvent* event, gpointer data)
     GdkEventType type = event->type;
     g_assert(type == GDK_KEY_PRESS);
 
-    GdkEventKey* key_event = (GdkEventKey*) event;
-    guint state = key_event->state & (
+    guint state = event->key.state & (
             GDK_SHIFT_MASK | GDK_CONTROL_MASK | GDK_MOD1_MASK
             );
+    guint16 key = event->key.keyval;
 
     gboolean send = geye_eyetracker_send_key_press(
             et,
-            key_event->keyval,
+            key,
             state
             );
     return TRUE;

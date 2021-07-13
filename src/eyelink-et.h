@@ -48,16 +48,13 @@ struct _GEyeEyelinkEt {
     GAsyncQueue* instance_to_thread;
     /* Replies are send back via this queue */
     GAsyncQueue* thread_to_instance;
-    /* When the do_tracker_setup_is_called it blocks, this
-     * queue can be used to talk from the hooks/callbacks
-     */
-    GAsyncQueue* tracker_setup_queue;
 
     /*
      * Callbacks for end users, although using signals is
      * more ideomatic in GNOME/glib applications.
+     *
+     * signals aren't implemented yet...
      */
-
     geye_start_cal_func      cb_start_calibration;
     gpointer                 cb_start_calibration_data;
 

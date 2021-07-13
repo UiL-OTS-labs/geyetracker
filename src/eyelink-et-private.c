@@ -42,8 +42,7 @@ typedef enum {
     ET_STOP_SETUP,
     ET_SETUP_KEY,
     ET_CALIBRATE,
-    ET_VALIDATE,
-    ET_TOGGLE_IMAGES
+    ET_VALIDATE
 } ThreadMsgType;
 
 
@@ -54,26 +53,6 @@ typedef struct {
         guint      num_calpoints;
     } content;
 } ThreadMsg;
-
-static void
-clear_tracker_setup_queue(GEyeEyelinkEt* self)
-{
-    // Start hooks with clean slate.
-    g_async_queue_lock(self->tracker_setup_queue);
-    while (g_async_queue_length_unlocked(self->tracker_setup_queue)) {
-        ThreadMsg *to_free = g_async_queue_pop_unlocked(self->tracker_setup_queue);
-        g_free(to_free);
-    }
-    g_async_queue_unlock(self->tracker_setup_queue);
-}
-
-static void
-eyelink_thread_stop_hooks(GEyeEyelinkEt* self)
-{
-    ThreadMsg* msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_STOP_SETUP;
-    g_async_queue_push(self->tracker_setup_queue, msg);
-}
 
 static void
 et_send_message(GEyeEyelinkEt* self, ThreadMsg* msg) {
@@ -219,12 +198,6 @@ et_start_setup(GEyeEyelinkEt* self)
     ret = eyelink_wait_for_mode_ready(100);
     g_assert(ret == 0);
 
-    ThreadMsg *msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_TOGGLE_IMAGES;
-    msg->content.event.key.key = ENTER_KEY;
-    msg->content.event.key.state = KB_PRESS;
-    g_async_queue_push(self->tracker_setup_queue, msg);
-
     do_tracker_setup();
 }
 
@@ -260,10 +233,8 @@ et_calibrate(GEyeEyelinkEt* self)
 {
     et_calibration_setup(self);
     eyelink_set_tracker_setup_default(0); // 1 = image, 0 menu
-    eyelink_send_keybutton('c', 0, KB_PRESS);
-    int b = 2;
+//    eyelink_send_keybutton('c', 0, KB_PRESS);
     do_tracker_setup();
-    int a = 1;
 }
 
 static void
@@ -271,7 +242,7 @@ et_validate(GEyeEyelinkEt* self)
 {
     et_calibration_setup(self);
     eyelink_set_tracker_setup_default(0); // 1 = image, 0 menu
-    eyelink_send_keybutton('v', 0, KB_PRESS);
+//    eyelink_send_keybutton('v', 0, KB_PRESS);
     do_tracker_setup();
 }
 
@@ -396,13 +367,6 @@ eyelink_hook_clear_cal_display(void* data)
         );
     }
 
-    // accept the calibration
-    ThreadMsg *msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_SETUP_KEY;
-    msg->content.event.key.key = ENTER_KEY;
-    msg->content.event.key.state = KB_PRESS;
-    g_async_queue_push(self->tracker_setup_queue, msg);
-
     return 0;
 }
 
@@ -456,26 +420,46 @@ gint16 eyelink_hook_draw_image(
 static gint16
 eyelink_hook_input_key(void* data, InputEvent* key_input)
 {
+    (void) key_input;
     GEyeEyelinkEt *self = data;
 
     int result = eyelink_cal_result();
+    char calmsg[256];
     if (result != NO_REPLY) {
         exit_calibration();
-        char msg[256];
-        eyelink_cal_message(msg);
+        eyelink_cal_message(calmsg);
     }
 
-    ThreadMsg *msg = g_async_queue_try_pop(self->tracker_setup_queue);
+    ThreadMsg *msg = g_async_queue_try_pop(self->instance_to_thread);
     if (msg) {
-        switch(msg->type) {
+        ThreadMsgType type = msg->type;
+        switch(type) {
             case ET_STOP_SETUP:
                 exit_calibration();
                 break;
-            case ET_SETUP_KEY: //check whether this is handy or not...
-            case ET_TOGGLE_IMAGES:
-                *key_input = msg->content.event;
-                g_print("KEY_INPUT_EVENT %4x %4x\n",
-                        key_input->key.key, key_input->key.modifier);
+            case ET_SETUP_KEY:
+                result = eyelink_send_keybutton(
+                        msg->content.event.key.key,
+                        msg->content.event.key.modifier,
+                        KB_PRESS
+                        );
+//                g_print("KEY_INPUT_EVENT %4x %4x\n",
+//                        msg->content.event.key.key,
+//                        msg->content.event.key.modifier);
+                break;
+            case ET_STOP:
+            case ET_CALIBRATE:
+            case ET_VALIDATE:
+            case ET_START_SETUP:
+            case ET_START_RECORDING:
+            case ET_START_TRACKING:
+            case ET_DISCONNECT:
+                /* These messages are not meaningful in setup mode, hence quit
+                 * setup and let the regular handler handle them.
+                 */
+                exit_calibration();
+                g_async_queue_push_front(self->instance_to_thread, msg);
+                msg = NULL;
                 break;
             default:
                 g_assert_not_reached();
@@ -550,7 +534,6 @@ void
 eyelink_thread_stop(GEyeEyelinkEt* self)
 {
     ThreadMsg* msg = g_malloc0(sizeof(ThreadMsg));
-    eyelink_thread_stop_hooks(self);
     msg->type = ET_STOP;
     et_send_message(self, msg);
     g_thread_join(self->eyelink_thread);
@@ -583,8 +566,6 @@ eyelink_thread_disconnect(GEyeEyelinkEt* self)
     if (!self->connected)
         return;
 
-    eyelink_thread_stop_hooks(self);
-
     msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_DISCONNECT;
     et_send_message(self, msg);
@@ -608,8 +589,6 @@ void eyelink_thread_start_tracking(GEyeEyelinkEt* self, GError** error)
                     "The eyelink must be connected.");
     }
 
-    eyelink_thread_stop_hooks(self);
-
     msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_START_TRACKING;
     et_send_message(self, msg);
@@ -625,8 +604,6 @@ void eyelink_thread_stop_tracking(GEyeEyelinkEt* self)
     ThreadMsg* msg;
     if (!self->connected)
         return;
-
-    eyelink_thread_stop_hooks(self);
 
     msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_STOP_TRACKING;
@@ -648,8 +625,6 @@ void eyelink_thread_start_recording(GEyeEyelinkEt* self, GError** error)
                     "The eyelink must be connected.");
     }
 
-    eyelink_thread_stop_hooks(self);
-
     msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_START_RECORDING;
     et_send_message(self, msg);
@@ -665,8 +640,6 @@ void eyelink_thread_stop_recording(GEyeEyelinkEt* self)
     ThreadMsg* msg;
     if (!self->connected)
         return;
-
-    eyelink_thread_stop_hooks(self);
 
     msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_STOP_RECORDING;
@@ -684,26 +657,25 @@ void eyelink_thread_start_setup(GEyeEyelinkEt* self)
     if (!self->connected)
         return;
 
-    clear_tracker_setup_queue(self);
-
+    /* make the thread enter setup mode */
     msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_START_SETUP;
     et_send_message(self, msg);
 
-    // The eyetracker is blocking on do_tracker_setup();
-    // so don't wait for reply.
+    /* Once the thread is in setup fetch images */
+    msg = g_malloc0(sizeof(ThreadMsg));
+    msg->type = ET_SETUP_KEY;
+    msg->content.event.key.key = ENTER_KEY;
+    msg->content.event.key.state = KB_PRESS;
+    et_send_message(self, msg);
 }
 
 void
 eyelink_thread_stop_setup(GEyeEyelinkEt* self)
 {
-    ThreadMsg *msg;
-    if (!self->connected)
-        return;
-
-    msg = g_malloc0(sizeof(ThreadMsg));
+    ThreadMsg *msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_STOP_SETUP;
-    g_async_queue_push(self->tracker_setup_queue, msg);
+    et_send_message(self, msg);
 }
 
 void
@@ -717,11 +689,10 @@ eyelink_thread_calibrate(GEyeEyelinkEt* self, GError **error)
                 GEYE_EYETRACKER_ERROR_INCORRECT_MODE,
                 "The eyelink is not connected");
 
-    clear_tracker_setup_queue(self);
-
     msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_CALIBRATE;
     et_send_message(self, msg);
+    eyelink_thread_send_key_press(self, 'c', 0);
 }
 
 void
@@ -735,11 +706,10 @@ eyelink_thread_validate(GEyeEyelinkEt* self, GError **error)
                 GEYE_EYETRACKER_ERROR_INCORRECT_MODE,
                 "The eyelink is not connected");
 
-    clear_tracker_setup_queue(self);
-
     msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_VALIDATE;
     et_send_message(self, msg);
+    eyelink_thread_send_key_press(self, 'v', 0);
 }
 
 gboolean
@@ -749,11 +719,26 @@ eyelink_thread_send_key_press(GEyeEyelinkEt * self, guint16 key, guint modifiers
         return FALSE;
 
     ThreadMsg *msg = g_malloc0(sizeof(ThreadMsg));
+    guint16 tkey = key; // translated key
+
+    // translate GDK key to what the eyelink seems to understand.
+    // see gdk/gdkkeysyms.h
+    // I could include that, but that makes gdk a dependency.
+    if (key >= 0xffbe && key <= 0xffc9) {// GDK keyvalues for F1 - F12
+        int fkeyval = key - 0xffbe;
+        tkey = (F1_KEY >> 8) + fkeyval;
+        tkey = tkey << 8;
+    }
+
+    if (key == 0xff1b ||
+        key == 0xff0d) // override enter and escape
+        tkey = key - 0xff00;
+
     msg->type = ET_SETUP_KEY;
-    msg->content.event.key.key = key;
+    msg->content.event.key.key = tkey;
     msg->content.event.key.modifier = modifiers;
     msg->content.event.key.state = KB_PRESS;
 
-    g_async_queue_push(self->tracker_setup_queue, msg);
+    g_async_queue_push(self->instance_to_thread, msg);
     return TRUE;
 }
