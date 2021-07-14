@@ -180,6 +180,18 @@ val_button_clicked(GtkWidget* button, gpointer data)
     geye_eyetracker_validate(testdata->et, NULL);
 }
 
+void
+setup_button_clicked(GtkWidget* button, gpointer data)
+{
+    (void) button;
+    g_print("%s data = %p\n", __func__, data);
+
+    EyetrackerData *testdata = data;
+
+    gtk_widget_grab_focus(testdata->darea);
+    geye_eyetracker_start_setup(testdata->et);
+}
+
 GEyeEyetracker *
 setup_eyelink()
 {
@@ -348,6 +360,12 @@ int main(int argc, char** argv)
             val_button,
             "clicked",
             G_CALLBACK(val_button_clicked),
+            &testdata
+            );
+    g_signal_connect(
+            setup_button,
+            "clicked",
+            G_CALLBACK(setup_button_clicked),
             &testdata
             );
     g_signal_connect(

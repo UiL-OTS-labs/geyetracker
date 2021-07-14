@@ -49,6 +49,9 @@ gboolean eyelink_thread_send_key_press(
                 GEyeEyelinkEt* self, guint16 key, guint modifiers
                 );
 
+void     eyelink_thread_setup_image_data(GEyeEyelinkEt* self, gsize size);
+void     eyelink_thread_clear_image_data(GEyeEyelinkEt* self);
+
 G_END_DECLS 
 
 #endif 

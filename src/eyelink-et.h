@@ -49,9 +49,12 @@ struct _GEyeEyelinkEt {
     /* Replies are send back via this queue */
     GAsyncQueue* thread_to_instance;
 
+    guint8*      image_data; //RGBA
+    gsize        image_size; // width * height * 4.
+
     /*
      * Callbacks for end users, although using signals is
-     * more ideomatic in GNOME/glib applications.
+     * more ideomatic in GNOME/gobject applications.
      *
      * signals aren't implemented yet...
      */

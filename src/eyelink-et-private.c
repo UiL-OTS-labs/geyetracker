@@ -191,13 +191,7 @@ et_stop_recording(GEyeEyelinkEt* self)
 static void
 et_start_setup(GEyeEyelinkEt* self)
 {
-    (void) self;
     eyelink_set_tracker_setup_default(0); // 1 = image, 0 = menu
-    int ret = eyelink_start_setup();
-    g_assert(ret == 0);
-    ret = eyelink_wait_for_mode_ready(100);
-    g_assert(ret == 0);
-
     do_tracker_setup();
 }
 
@@ -233,7 +227,6 @@ et_calibrate(GEyeEyelinkEt* self)
 {
     et_calibration_setup(self);
     eyelink_set_tracker_setup_default(0); // 1 = image, 0 menu
-//    eyelink_send_keybutton('c', 0, KB_PRESS);
     do_tracker_setup();
 }
 
@@ -242,7 +235,6 @@ et_validate(GEyeEyelinkEt* self)
 {
     et_calibration_setup(self);
     eyelink_set_tracker_setup_default(0); // 1 = image, 0 menu
-//    eyelink_send_keybutton('v', 0, KB_PRESS);
     do_tracker_setup();
 }
 
@@ -403,15 +395,29 @@ eyelink_hook_setup_image_display(gpointer data, gint16 width, gint16 height)
     (void) et;
     gsize imbufsz = width * height * EYELINK_PIXEL_SIZE;
     g_print("Setup image display %d %d %lu\n", width, height, imbufsz);
+    eyelink_thread_setup_image_data(et, imbufsz);
+    return 1;
+}
+
+static gint16
+eyelink_hook_clear_image_display(gpointer data)
+{
+    GEyeEyelinkEt *et = data;
+    eyelink_thread_clear_image_data(et);
     return 0;
 }
 
 gint16 eyelink_hook_draw_image(
-                void* data, gint16 width, gint16 height, guint8* bytes
+        void* data, gint16 width, gint16 height, guint8* bytes
         )
 {
-    int w = width;
-    int h = height;
+    GEyeEyelinkEt *self = data;
+    guint w = width;
+    guint h = height;
+    gsize reqsz = w * h * 4;
+    if (reqsz < self->image_size)
+        eyelink_thread_setup_image_data(self, reqsz);
+
     g_print("in draw image %p, %d, %d %p\n", data, w, h, bytes);
     //exit_calibration();
     return 0;
@@ -469,7 +475,6 @@ eyelink_hook_input_key(void* data, InputEvent* key_input)
         g_free(msg);
     }
 
-
     return 0;
 }
 
@@ -493,7 +498,7 @@ eyelink_thread(gpointer data)
         .setup_image_display_hook = eyelink_hook_setup_image_display,
         .image_title_hook = NULL,
         .draw_image = eyelink_hook_draw_image,
-        .exit_image_display_hook = NULL,
+        .exit_image_display_hook = eyelink_hook_clear_image_display,
 
         // send keys to eyelink.
         .get_input_key_hook = eyelink_hook_input_key
@@ -742,4 +747,24 @@ eyelink_thread_send_key_press(GEyeEyelinkEt * self, guint16 key, guint modifiers
 
     g_async_queue_push(self->instance_to_thread, msg);
     return TRUE;
+}
+
+void
+eyelink_thread_setup_image_data(
+        GEyeEyelinkEt* self, gsize img_size
+        )
+{
+    if (self->image_data){
+        g_free(self->image_data);
+    }
+    self->image_data = g_malloc(img_size);
+    self->image_size = img_size;
+    g_assert(self->image_data);
+}
+
+void
+eyelink_thread_clear_image_data(GEyeEyelinkEt* self)
+{
+    g_free(self->image_data);
+    self->image_data = 0;
 }
