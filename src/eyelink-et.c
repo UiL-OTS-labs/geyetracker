@@ -168,6 +168,16 @@ eyelink_et_set_calpoint_stop_cb(GEyeEyetracker          *et,
     self->cb_calpoint_stop_data = data;
 }
 
+static void
+eyelink_et_set_image_data_cb(GEyeEyetracker* et,
+                             geye_image_data_func cb,
+                             gpointer data)
+{
+    eyelink_thread_set_image_data_cb(
+            GEYE_EYELINK_ET(et), cb, data
+            );
+}
+
 static gboolean
 eyelink_et_send_key_press(GEyeEyetracker* et, guint16 key, guint modifiers)
 {
@@ -201,6 +211,8 @@ geye_eyetracker_interface_init(GEyeEyetrackerInterface* iface)
     iface->set_calibration_stop_cb  = eyelink_et_set_calibration_stop_cb;
     iface->set_calpoint_start_cb    = eyelink_et_set_calpoint_start_cb;
     iface->set_calpoint_stop_cb     = eyelink_et_set_calpoint_stop_cb;
+
+    iface->set_image_data_cb = eyelink_et_set_image_data_cb;
 
     iface->send_key_press   = eyelink_et_send_key_press;
 }

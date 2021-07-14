@@ -34,11 +34,19 @@ G_DECLARE_INTERFACE(GEyeEyetracker, geye_eyetracker, GEYE, EYETRACKER, GObject)
 typedef void (*geye_start_cal_func)(GEyeEyetracker *self, gpointer data);
 typedef void (*geye_stop_cal_func)(GEyeEyetracker *self, gpointer data);
 typedef void (*geye_calpoint_start_func) (GEyeEyetracker *self,
-                                           gdouble x,
-                                           gdouble y,
-                                           gpointer data
-                                           );
+                                          gdouble x,
+                                          gdouble y,
+                                          gpointer data
+                                          );
 typedef void (*geye_calpoint_stop_func)(GEyeEyetracker*self, gpointer data);
+
+typedef void (*geye_image_data_func)(GEyeEyetracker *self,
+                                     guint           width,
+                                     guint           height,
+                                     gsize           img_num_bytes,
+                                     guint8*         img_data,
+                                     gpointer        data);
+
 
 struct _GEyeEyetrackerInterface {
     GTypeInterface parent_iface;
@@ -94,9 +102,14 @@ struct _GEyeEyetrackerInterface {
                                      geye_calpoint_stop_func    cb,
                                      gpointer                   data);
 
+    void (*set_image_data_cb)       (GEyeEyetracker            *et,
+                                     geye_image_data_func       cb,
+                                     gpointer                   data);
+
     gboolean (*send_key_press)      (GEyeEyetracker            *et,
                                      guint16                    key_code,
                                      guint                      modifiers);
+
 };
 
 G_MODULE_EXPORT void
@@ -163,6 +176,11 @@ G_MODULE_EXPORT void
 geye_eyetracker_set_calpoint_stop_cb   (GEyeEyetracker              *et,
                                         geye_calpoint_stop_func     cb,
                                         gpointer                    data);
+
+G_MODULE_EXPORT void
+geye_eyetracker_set_image_data_cb(GEyeEyetracker            *et,
+                                  geye_image_data_func       cb,
+                                  gpointer                   data);
 
 G_MODULE_EXPORT gboolean
 geye_eyetracker_send_key_press(GEyeEyetracker  *et,

@@ -69,6 +69,9 @@ struct _GEyeEyelinkEt {
 
     geye_calpoint_stop_func  cb_calpoint_stop;
     gpointer                 cb_calpoint_stop_data;
+
+    geye_image_data_func     cb_image_data;
+    gpointer                 cb_image_data_data;
 };
 
 

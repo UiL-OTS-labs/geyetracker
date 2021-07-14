@@ -278,6 +278,20 @@ geye_eyetracker_set_calpoint_stop_cb  (GEyeEyetracker          *et,
     iface->set_calpoint_stop_cb(et, cb, data);
 }
 
+void
+geye_eyetracker_set_image_data_cb(GEyeEyetracker            *et,
+                                  geye_image_data_func       cb,
+                                  gpointer                   data)
+{
+    GEyeEyetrackerInterface *iface;
+
+    g_return_if_fail(GEYE_IS_EYETRACKER(et));
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_if_fail(iface->set_image_data_cb != NULL);
+    iface->set_image_data_cb(et, cb, data);
+}
+
 gboolean
 geye_eyetracker_send_key_press(GEyeEyetracker*  et,
                                guint16          key,

@@ -30,10 +30,7 @@ typedef enum {
     ET_ACKNOWLEDGE,
     ET_FAIL,
     ET_CONNECT,
-    ET_CONNECTED,
-    ET_CONNECTED_ERROR,
     ET_DISCONNECT,
-    ET_DISCONNECTED,
     ET_START_TRACKING,
     ET_STOP_TRACKING,
     ET_START_RECORDING,
@@ -42,15 +39,21 @@ typedef enum {
     ET_STOP_SETUP,
     ET_SETUP_KEY,
     ET_CALIBRATE,
-    ET_VALIDATE
+    ET_VALIDATE,
+    ET_SET_IMG_CB
 } ThreadMsgType;
 
+typedef struct ThreadCBMessage{
+    void    (*func)(void);
+    gpointer  data;
+}ThreadCBMessage;
 
 typedef struct {
     ThreadMsgType type;
     union ThreadContent {
-        InputEvent event;
-        guint      num_calpoints;
+        InputEvent      event;
+        guint           num_calpoints;
+        ThreadCBMessage cb;
     } content;
 } ThreadMsg;
 
@@ -104,12 +107,12 @@ et_connect(GEyeEyelinkEt* self) {
 
     if (open_eyelink_connection(mode)) {
         ThreadMsg* msg = g_malloc0(sizeof(ThreadMsg));
-        msg->type = ET_CONNECTED_ERROR;
+        msg->type = ET_FAIL;
         et_reply(self, msg);
     }
     else {
         ThreadMsg* msg = g_malloc0(sizeof(ThreadMsg));
-        msg->type = ET_CONNECTED;
+        msg->type = ET_ACKNOWLEDGE;
         et_reply(self, msg);
     }
 }
@@ -119,7 +122,7 @@ et_disconnect(GEyeEyelinkEt* self)
 {
     close_eyelink_connection();
     ThreadMsg* msg = g_malloc0(sizeof(ThreadMsgType));
-    msg->type = ET_DISCONNECTED;
+    msg->type = ET_ACKNOWLEDGE;
     et_reply(self, msg);
 }
 
@@ -275,11 +278,12 @@ handle_msg(GEyeEyelinkEt* self, ThreadMsg* msg)
         case ET_VALIDATE:
             et_validate(self);
             break;
+        case ET_SET_IMG_CB:
+            self->cb_image_data = (geye_image_data_func ) msg->content.cb.func;
+            self->cb_image_data_data = msg->content.cb.data;
+            break;
         case ET_STOP_SETUP:
         case ET_ACKNOWLEDGE:
-        case ET_CONNECTED:
-        case ET_CONNECTED_ERROR:
-        case ET_DISCONNECTED:
         default:
             g_warning("Unexpected message type %d", type);
     }
@@ -354,7 +358,7 @@ eyelink_hook_clear_cal_display(void* data)
     g_print("in %s:%d\n", __func__, __LINE__);
     GEyeEyelinkEt *self = data;
     if (self->cb_stop_calibration) {
-        self->cb_stop_calibration(
+        self->cb_stop_calibration (
                 GEYE_EYETRACKER(self), self->cb_stop_calibration_data
         );
     }
@@ -396,7 +400,7 @@ eyelink_hook_setup_image_display(gpointer data, gint16 width, gint16 height)
     gsize imbufsz = width * height * EYELINK_PIXEL_SIZE;
     g_print("Setup image display %d %d %lu\n", width, height, imbufsz);
     eyelink_thread_setup_image_data(et, imbufsz);
-    return 1;
+    return 0;
 }
 
 static gint16
@@ -412,14 +416,31 @@ gint16 eyelink_hook_draw_image(
         )
 {
     GEyeEyelinkEt *self = data;
-    guint w = width;
-    guint h = height;
-    gsize reqsz = w * h * 4;
-    if (reqsz < self->image_size)
-        eyelink_thread_setup_image_data(self, reqsz);
+    if (self->cb_image_data) {
+        guint w = width;
+        guint h = height;
+        gsize reqsz = w * h * 4;
+        if (reqsz < self->image_size)
+            eyelink_thread_setup_image_data(self, reqsz);
+        guint8* src, *dest;
+        for (src = bytes, dest = self->image_data;
+             src < bytes + reqsz && dest < self->image_data + self->image_size;
+             src+=4, dest+=4) {
+            dest[0] = src[0];
+            dest[1] = src[1];
+            dest[2] = src[2];
+            dest[3] = 0;
+        }
+        self->cb_image_data(GEYE_EYETRACKER(self),
+                            width,
+                            height,
+                            reqsz,
+                            self->image_data,
+                            self->cb_image_data_data);
+    }
 
-    g_print("in draw image %p, %d, %d %p\n", data, w, h, bytes);
-    //exit_calibration();
+    g_print("in draw image %p, %d, %d %p\n", data, width, height, bytes);
+
     return 0;
 }
 
@@ -552,7 +573,7 @@ eyelink_thread_connect(GEyeEyelinkEt* self, GError** error)
     msg->type = ET_CONNECT;
     et_send_message(self, msg);
     msg = et_receive_reply(self);
-    if (msg->type != ET_CONNECTED) {
+    if (msg->type != ET_ACKNOWLEDGE) {
         g_set_error(
                 error,
                 GEYE_EYETRACKER_ERROR,
@@ -576,7 +597,7 @@ eyelink_thread_disconnect(GEyeEyelinkEt* self)
     msg->type = ET_DISCONNECT;
     et_send_message(self, msg);
     msg = et_receive_reply_timeout(self, (guint64) 1e6);
-    if (!msg || msg->type != ET_DISCONNECTED) {
+    if (!msg || msg->type != ET_ACKNOWLEDGE) {
         g_warning("Unable to disconnect the eyelink eyetracker");
     }
     else {
@@ -716,6 +737,18 @@ eyelink_thread_validate(GEyeEyelinkEt* self, GError **error)
     msg->type = ET_VALIDATE;
     et_send_message(self, msg);
     eyelink_thread_send_key_press(self, 'v', 0);
+}
+
+void
+eyelink_thread_set_image_data_cb(GEyeEyelinkEt       *self,
+                                 geye_image_data_func cb,
+                                 gpointer             data)
+{
+    ThreadMsg *msg = g_malloc0(sizeof(ThreadMsg));
+    msg->type = ET_SET_IMG_CB;
+    msg->content.cb.func = G_CALLBACK(cb);
+    msg->content.cb.data = data;
+    et_send_message(self, msg);
 }
 
 gboolean

@@ -42,7 +42,7 @@ libglib_dep = dependency('glib-2.0', fallback : ['glib', 'libglib_dep'] )
 libgobject_dep = dependency('gobject-2.0', fallback : ['glib', 'libgobject_dep'])
 libgio_dep= dependency('gio-2.0', fallback : ['glib', 'libgio_dep'])
 libgmodule_dep = dependency('gmodule-2.0', fallback : ['glib', 'libgmodule_dep'])
-libcairogobject_dep = dependency('cairo-gobject')
+#libcairogobject_dep = dependency('cairo-gobject')
 libgtk3_dep= dependency('gtk+-3.0')
 
 lib_eyelink_core = c_compiler.find_library('eyelink_core', static : false)
