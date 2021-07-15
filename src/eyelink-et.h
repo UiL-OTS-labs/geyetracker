@@ -52,6 +52,8 @@ struct _GEyeEyelinkEt {
     guint8*      image_data; //RGBA
     gsize        image_size; // width * height * 4.
 
+    gboolean     quit_hooks;
+
     /*
      * Callbacks for end users, although using signals is
      * more ideomatic in GNOME/gobject applications.

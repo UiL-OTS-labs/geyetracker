@@ -194,6 +194,10 @@ et_stop_recording(GEyeEyelinkEt* self)
 static void
 et_start_setup(GEyeEyelinkEt* self)
 {
+    int result = eyelink_request_image(ELIMAGE_128HVX, 192*2, 160*2);
+    if (result != OK_RESULT)
+        g_critical("Unable to handle eyelink_request image.");
+    self->quit_hooks = FALSE;
     eyelink_set_tracker_setup_default(0); // 1 = image, 0 = menu
     do_tracker_setup();
 }
@@ -225,19 +229,13 @@ et_calibration_setup(GEyeEyelinkEt* self)
     return ret == OK_RESULT;
 }
 
+// Used for calibration and validation.
 static void
 et_calibrate(GEyeEyelinkEt* self)
 {
     et_calibration_setup(self);
     eyelink_set_tracker_setup_default(0); // 1 = image, 0 menu
-    do_tracker_setup();
-}
-
-static void
-et_validate(GEyeEyelinkEt* self)
-{
-    et_calibration_setup(self);
-    eyelink_set_tracker_setup_default(0); // 1 = image, 0 menu
+    self->quit_hooks = FALSE;
     do_tracker_setup();
 }
 
@@ -273,10 +271,8 @@ handle_msg(GEyeEyelinkEt* self, ThreadMsg* msg)
             et_start_setup(self);
             break;
         case ET_CALIBRATE:
-            et_calibrate(self);
-            break;
         case ET_VALIDATE:
-            et_validate(self);
+            et_calibrate(self);
             break;
         case ET_SET_IMG_CB:
             self->cb_image_data = (geye_image_data_func ) msg->content.cb.func;
@@ -400,7 +396,7 @@ eyelink_hook_setup_image_display(gpointer data, gint16 width, gint16 height)
     gsize imbufsz = width * height * EYELINK_PIXEL_SIZE;
     g_print("Setup image display %d %d %lu\n", width, height, imbufsz);
     eyelink_thread_setup_image_data(et, imbufsz);
-    return 0;
+    return 1;
 }
 
 static gint16
@@ -420,16 +416,20 @@ gint16 eyelink_hook_draw_image(
         guint w = width;
         guint h = height;
         gsize reqsz = w * h * 4;
-        if (reqsz < self->image_size)
+        if (reqsz > self->image_size)
             eyelink_thread_setup_image_data(self, reqsz);
         guint8* src, *dest;
+        // Change from Eyelink RGBA to Cairo ARGB32
         for (src = bytes, dest = self->image_data;
              src < bytes + reqsz && dest < self->image_data + self->image_size;
              src+=4, dest+=4) {
-            dest[0] = src[0];
+            //guint8 array [4] = {src[0], src[1], src[2], src[3]};
+            //g_print("array = %2.2x  %2.2x %2.2x %2.2x\n",
+            //        array[1], array[2], array[3], array[4]);
+            dest[0] = src[2];
             dest[1] = src[1];
-            dest[2] = src[2];
-            dest[3] = 0;
+            dest[2] = src[0];
+            dest[3] = 255; //src[4];
         }
         self->cb_image_data(GEYE_EYETRACKER(self),
                             width,
@@ -448,9 +448,21 @@ static gint16
 eyelink_hook_input_key(void* data, InputEvent* key_input)
 {
     (void) key_input;
+    int result;
     GEyeEyelinkEt *self = data;
 
-    int result = eyelink_cal_result();
+    if (self->quit_hooks == TRUE) {
+         result = eyelink_send_keybutton(
+                ESC_KEY,
+                0,
+                KB_PRESS
+        );
+        g_assert(result == OK_RESULT);
+
+        return 0;
+    }
+
+     result = eyelink_cal_result();
     char calmsg[256];
     if (result != NO_REPLY) {
         exit_calibration();
@@ -462,7 +474,7 @@ eyelink_hook_input_key(void* data, InputEvent* key_input)
         ThreadMsgType type = msg->type;
         switch(type) {
             case ET_STOP_SETUP:
-                exit_calibration();
+                self->quit_hooks = TRUE;
                 break;
             case ET_SETUP_KEY:
                 result = eyelink_send_keybutton(
@@ -485,9 +497,10 @@ eyelink_hook_input_key(void* data, InputEvent* key_input)
                 /* These messages are not meaningful in setup mode, hence quit
                  * setup and let the regular handler handle them.
                  */
-                exit_calibration();
+                //exit_calibration();
                 g_async_queue_push_front(self->instance_to_thread, msg);
                 msg = NULL;
+                self->quit_hooks = TRUE;
                 break;
             default:
                 g_assert_not_reached();

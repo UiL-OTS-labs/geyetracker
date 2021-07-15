@@ -13,13 +13,57 @@ typedef struct CalData {
     gdouble     x, y;
 } CalData;
 
+typedef struct ImageData {
+    cairo_surface_t    *surf;
+}ImageData;
+
 typedef struct EyetrackerData {
     gchar          *chosen_et;
     GEyeEyetracker *et;
     gboolean        is_calibrating;
+    gboolean        is_cam_setup;
+
     CalData         cal_data;       // Specifies the calibration state.
+    ImageData       img_data;
     GtkWidget*      darea;          // The GtkDrawingArea for cal graphics.
 } EyetrackerData;
+
+typedef struct CalpointPars {
+    GEyeEyetracker *et;
+    gboolean needs_dot;
+    gdouble x;
+    gdouble y;
+    gpointer data;
+} CalpointPars;
+
+typedef struct ImagePars {
+    GEyeEyetracker *et;
+    cairo_surface_t* surf;
+    gpointer data;
+} ImagePars;
+
+ImagePars*
+image_pars_create(
+        GEyeEyetracker* et, cairo_surface_t* surf, gpointer data
+)
+{
+    ImagePars *pars = g_malloc(sizeof(ImagePars));
+    if (!pars)
+        return NULL;
+    pars->et = et;
+    pars->surf = surf;
+    pars->data = data;
+
+    return pars;
+}
+
+void
+image_pars_destroy(ImagePars* pars)
+{
+    if (pars)
+        cairo_surface_destroy(pars->surf);
+    g_free(pars);
+}
 
 gboolean
 window_quit(GtkWidget* window, GdkEvent* event, gpointer data)
@@ -56,13 +100,6 @@ on_key_press(GtkWidget* darea, GdkEvent* event, gpointer data)
     return TRUE;
 }
 
-typedef struct CalpointPars {
-    GEyeEyetracker *et;
-    gboolean needs_dot;
-    gdouble x;
-    gdouble y;
-    gpointer data;
-} CalpointPars;
 
 gboolean
 on_calpoint_start(gpointer data)
@@ -95,6 +132,25 @@ on_calpoint_stop(gpointer data)
 
     gtk_widget_queue_draw(testdata->darea);
 
+    return G_SOURCE_REMOVE;
+}
+
+gboolean
+on_setup_image(gpointer data) {
+    ImagePars *pars = data;
+    EyetrackerData *testdata = pars->data;
+    testdata->is_cam_setup = TRUE;
+
+    // if there is a surface clear it.
+    if(testdata->img_data.surf){
+        cairo_surface_destroy(testdata->img_data.surf);
+        testdata->img_data.surf = NULL;
+    }
+
+    testdata->img_data.surf = cairo_surface_reference(pars->surf);
+    // Don't do the next as it is destroy by the g_source's destroy notify.
+    // image_pars_destroy(pars);
+    gtk_widget_queue_draw(testdata->darea);
     return G_SOURCE_REMOVE;
 }
 
@@ -134,6 +190,45 @@ calpoint_stop(GEyeEyetracker* et, gpointer data)
             NULL
     );
     g_source_attach(calpoint_source, g_main_context_default());
+}
+
+void setup_image(
+        GEyeEyetracker* et,
+        guint           width,
+        guint           height,
+        gsize           img_buf_sz,
+        guint8*         img_data,
+        gpointer        data
+        )
+{
+    cairo_surface_t *surf = cairo_image_surface_create(
+            CAIRO_FORMAT_RGB24, width, height);
+    cairo_status_t status = cairo_surface_status(surf);
+    if (status != CAIRO_STATUS_SUCCESS) {
+        g_warning("Unable to create cairo suface %s",
+                  cairo_status_to_string(status));
+        cairo_surface_destroy(surf);
+        return;
+    }
+
+    memcpy(cairo_image_surface_get_data(surf), img_data, img_buf_sz);
+    ImagePars *pars = image_pars_create(
+            et, surf, data
+            );
+    if (!pars) {
+        cairo_surface_destroy(surf);
+        return;
+    }
+
+    GSource* img_source = g_idle_source_new();
+    g_source_set_callback (
+            img_source,
+            G_SOURCE_FUNC(on_setup_image),
+            pars,
+            (GDestroyNotify) image_pars_destroy
+            );
+
+    g_source_attach(img_source, g_main_context_default());
 }
 
 void
@@ -242,6 +337,9 @@ select_eyetracker(GtkComboBox* widget, gpointer data)
                 geye_eyetracker_set_calpoint_stop_cb(
                         testdata->et, calpoint_stop, testdata
                         );
+                geye_eyetracker_set_image_data_cb(
+                        testdata->et, setup_image, testdata
+                        );
             }
         }
     }
@@ -264,9 +362,12 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
     circle_rad = width/50;
     s_circle_rad = height/200;
 
+    // clear background
+
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
     cairo_rectangle(cr, 0, 0, width, height);
     cairo_fill(cr);
+
     if (testdata->is_calibrating && testdata->cal_data.needs_dot) {
         cairo_set_source_rgb(cr, 0.0, 0.0, 1.0);
         cairo_arc(
@@ -290,6 +391,13 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
         cairo_close_path(cr);
         cairo_fill(cr);
 
+    }
+
+    if (testdata->is_cam_setup){
+        cairo_rectangle(cr, 0, 0, width, height);
+        cairo_set_source_surface(cr, testdata->img_data.surf, 0, 0);
+        cairo_fill(cr);
+        testdata-> is_cam_setup = FALSE;
     }
     return FALSE;
 }
