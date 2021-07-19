@@ -71,7 +71,8 @@ window_quit(GtkWidget* window, GdkEvent* event, gpointer data)
     (void) window, (void)event;
     g_print("%s data = %p\n", __func__, data);
     EyetrackerData *testdata = data;
-    g_object_unref(testdata->et);
+    if (testdata->et != NULL)
+        g_object_unref(testdata->et);
     g_free(testdata->chosen_et);
     gtk_main_quit();
     return TRUE;
@@ -394,8 +395,21 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
     }
 
     if (testdata->is_cam_setup){
-        cairo_rectangle(cr, 0, 0, width, height);
-        cairo_set_source_surface(cr, testdata->img_data.surf, 0, 0);
+        cairo_surface_t *tsurf = testdata->img_data.surf;
+        double img_origin_x, img_origin_y;
+        img_origin_x = width / 2.0 - cairo_image_surface_get_width(tsurf) / 2.0;
+        img_origin_y = height / 2.0 - cairo_image_surface_get_height(tsurf) / 2.0;
+        cairo_set_source_surface(
+                cr,
+                tsurf,
+                img_origin_x,
+                img_origin_y);
+        cairo_rectangle(
+                cr, img_origin_x,
+                img_origin_y,
+                cairo_image_surface_get_width(tsurf),
+                cairo_image_surface_get_height(tsurf)
+                );
         cairo_fill(cr);
         testdata-> is_cam_setup = FALSE;
     }
