@@ -337,7 +337,7 @@ handle_events(GEyeEyelinkEt* self)
 static gint16
 eyelink_hook_setup_cal_display(void* data)
 {
-    g_print("in setup cal display\n");
+    g_print("Trace %s:%d\n", __func__ , __LINE__);
     GEyeEyelinkEt *self = data;
     GEyeEyetracker *et = data;
     if (self->cb_start_calibration) {
@@ -351,7 +351,7 @@ eyelink_hook_setup_cal_display(void* data)
 static gint16
 eyelink_hook_clear_cal_display(void* data)
 {
-    g_print("in %s:%d\n", __func__, __LINE__);
+    g_print("Trace %s:%d\n", __func__ , __LINE__);
     GEyeEyelinkEt *self = data;
     if (self->cb_stop_calibration) {
         self->cb_stop_calibration (
@@ -365,6 +365,7 @@ eyelink_hook_clear_cal_display(void* data)
 static gint16
 eyelink_hook_draw_cal_target(void *data, float x, float y)
 {
+    g_print("Trace %s:%d\n", __func__ , __LINE__);
     GEyeEyelinkEt *self = data;
     GEyeEyetracker *et = data;
     if (self->cb_calpoint_start) {
@@ -378,6 +379,7 @@ eyelink_hook_draw_cal_target(void *data, float x, float y)
 static gint16
 eyelink_hook_erase_cal_target(void *data)
 {
+    g_print("Trace %s:%d\n", __func__ , __LINE__);
     GEyeEyelinkEt *self = data;
     GEyeEyetracker *et = data;
     if (self->cb_calpoint_stop) {
@@ -402,6 +404,7 @@ eyelink_hook_setup_image_display(gpointer data, gint16 width, gint16 height)
 static gint16
 eyelink_hook_clear_image_display(gpointer data)
 {
+    g_print("Trace %s:%d\n", __func__ , __LINE__);
     GEyeEyelinkEt *et = data;
     eyelink_thread_clear_image_data(et);
     return 0;
@@ -439,7 +442,8 @@ gint16 eyelink_hook_draw_image(
                             self->cb_image_data_data);
     }
 
-    g_print("in draw image %p, %d, %d %p\n", data, width, height, bytes);
+    g_print("in draw image %p, %d, %d %p\n",
+            data, width, height, (void*)bytes);
 
     return 0;
 }
@@ -462,7 +466,7 @@ eyelink_hook_input_key(void* data, InputEvent* key_input)
         return 0;
     }
 
-     result = eyelink_cal_result();
+    result = eyelink_cal_result();
     char calmsg[256];
     if (result != NO_REPLY) {
         exit_calibration();
@@ -796,7 +800,7 @@ eyelink_thread_send_key_press(GEyeEyelinkEt * self, guint16 key, guint modifiers
 }
 
 void
-eyelink_thread_setup_image_data(
+eyelink_thread_setup_image_data (
         GEyeEyelinkEt* self, gsize img_size
         )
 {

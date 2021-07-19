@@ -45,12 +45,18 @@ void     eyelink_thread_stop_setup(GEyeEyelinkEt *self);
 void     eyelink_thread_calibrate(GEyeEyelinkEt* self, GError** error);
 void     eyelink_thread_validate(GEyeEyelinkEt* self, GError** error);
 
+void     eyelink_thread_set_image_data_cb(GEyeEyelinkEt       *self,
+                                          geye_image_data_func cb,
+                                          gpointer             data);
+
 gboolean eyelink_thread_send_key_press(
                 GEyeEyelinkEt* self, guint16 key, guint modifiers
                 );
 
 void     eyelink_thread_setup_image_data(GEyeEyelinkEt* self, gsize size);
 void     eyelink_thread_clear_image_data(GEyeEyelinkEt* self);
+
+
 
 G_END_DECLS 
 
