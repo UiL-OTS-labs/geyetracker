@@ -42,6 +42,8 @@ geye_eyelink_et_init(GEyeEyelinkEt* self) {
     self->instance_to_thread    = g_async_queue_new_full(g_free);
     self->thread_to_instance    = g_async_queue_new_full(g_free);
 
+    self->main_context          = g_main_context_ref_thread_default();
+
     // keep this last, otherwise the queue might be NULL
     self->eyelink_thread        = eyelink_thread_start(self);
 }
@@ -227,11 +229,20 @@ eyelink_et_dispose(GObject* gobject)
         eyelink_thread_stop(self);
     self->eyelink_thread = NULL;
 
-    g_async_queue_unref(self->thread_to_instance);
-    self->thread_to_instance = NULL;
+    if (self->thread_to_instance) {
+        g_async_queue_unref(self->thread_to_instance);
+        self->thread_to_instance = NULL;
+    }
 
-    g_async_queue_unref(self->instance_to_thread);
-    self->instance_to_thread = NULL;
+    if (self->instance_to_thread) {
+        g_async_queue_unref(self->instance_to_thread);
+        self->instance_to_thread = NULL;
+    }
+
+    if (self->main_context) {
+        g_main_context_unref(self->main_context);
+        self->main_context = NULL;
+    }
 
     G_OBJECT_CLASS(geye_eyelink_et_parent_class)->dispose(gobject);
 }

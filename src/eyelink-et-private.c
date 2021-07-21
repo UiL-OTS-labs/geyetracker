@@ -69,6 +69,7 @@ et_receive_reply(GEyeEyelinkEt* self)
     return msg;
 }
 
+/*
 static ThreadMsg*
 et_receive_reply_timeout(GEyeEyelinkEt* self, guint64 timeout_us)
 {
@@ -78,9 +79,35 @@ et_receive_reply_timeout(GEyeEyelinkEt* self, guint64 timeout_us)
             );
     return msg;
 }
+*/
+
 static void
 et_reply(GEyeEyelinkEt* self, ThreadMsg* msg) {
     g_async_queue_push(self->thread_to_instance, msg);
+}
+
+struct connect_info {
+    GEyeEyetracker *self;
+    gboolean        connected;
+};
+
+void free_connect_info (gpointer data) {
+    struct connect_info* info = data;
+    g_object_unref(info->self);
+    g_free(info);
+}
+
+static gint
+emit_connected(gpointer data)
+{
+    struct connect_info* info = data;
+    g_assert(g_main_context_is_owner(
+            GEYE_EYELINK_ET(info->self)->main_context));
+
+    g_signal_emit_by_name(
+            info->self,
+            "connected", info->connected);
+    return G_SOURCE_REMOVE;
 }
 
 static void
@@ -105,15 +132,22 @@ et_connect(GEyeEyelinkEt* self) {
     else
         mode = 0;
 
-    if (open_eyelink_connection(mode)) {
-        ThreadMsg* msg = g_malloc0(sizeof(ThreadMsg));
-        msg->type = ET_FAIL;
-        et_reply(self, msg);
-    }
-    else {
-        ThreadMsg* msg = g_malloc0(sizeof(ThreadMsg));
-        msg->type = ET_ACKNOWLEDGE;
-        et_reply(self, msg);
+    ret = open_eyelink_connection(mode);
+
+    self->connected = ret == 0;
+
+    if (self->main_context) {
+        struct connect_info *connected = g_malloc0(sizeof(gboolean));
+        connected->connected = ret == 0;
+        connected->self = g_object_ref(self);
+
+        g_main_context_invoke_full(
+            self->main_context,
+            G_PRIORITY_DEFAULT,
+            emit_connected,
+            connected,
+            free_connect_info
+        );
     }
 }
 
@@ -121,9 +155,21 @@ static void
 et_disconnect(GEyeEyelinkEt* self)
 {
     close_eyelink_connection();
-    ThreadMsg* msg = g_malloc0(sizeof(ThreadMsgType));
-    msg->type = ET_ACKNOWLEDGE;
-    et_reply(self, msg);
+
+    if (self->main_context) {
+        struct connect_info *connected = g_malloc0(sizeof(gboolean));
+        connected->connected = FALSE;
+        connected->self = g_object_ref(self);
+
+        g_main_context_invoke_full(
+                self->main_context,
+                G_PRIORITY_DEFAULT,
+                emit_connected,
+                connected,
+                free_connect_info
+        );
+    }
+
 }
 
 static void
@@ -583,24 +629,13 @@ eyelink_thread_stop(GEyeEyelinkEt* self)
     g_thread_join(self->eyelink_thread);
 }
 
+
 void
 eyelink_thread_connect(GEyeEyelinkEt* self, GError** error)
 {
     ThreadMsg* msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_CONNECT;
     et_send_message(self, msg);
-    msg = et_receive_reply(self);
-    if (msg->type != ET_ACKNOWLEDGE) {
-        g_set_error(
-                error,
-                GEYE_EYETRACKER_ERROR,
-                GEYE_EYETRACKER_ERROR_UNABLE_TO_CONNECT,
-                "The eyelink thread was not able to connect to the eyetracker."
-                );
-        g_free(msg);
-        return;
-    }
-    self->connected = TRUE;
 }
 
 void
@@ -613,14 +648,6 @@ eyelink_thread_disconnect(GEyeEyelinkEt* self)
     msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_DISCONNECT;
     et_send_message(self, msg);
-    msg = et_receive_reply_timeout(self, (guint64) 1e6);
-    if (!msg || msg->type != ET_ACKNOWLEDGE) {
-        g_warning("Unable to disconnect the eyelink eyetracker");
-    }
-    else {
-        self->connected = FALSE;
-    }
-    g_free(msg);
 }
 
 void eyelink_thread_start_tracking(GEyeEyelinkEt* self, GError** error)

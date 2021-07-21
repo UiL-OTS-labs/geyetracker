@@ -22,10 +22,18 @@
 
 G_DEFINE_INTERFACE(GEyeEyetracker, geye_eyetracker, G_TYPE_OBJECT)
 
+enum signals {
+    CONNECTED,
+    CAL_POINT_START,
+    CAL_POINT_STOP,
+    N_SIGNALS,
+};
+
+static gint signals [N_SIGNALS];
+
 static void
 geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
 {
-
     GParamSpec* spec;
     spec = g_param_spec_boolean (
         "connected",
@@ -65,6 +73,74 @@ geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
             );
     g_object_interface_install_property(iface, spec);
 
+    /**
+     * GEyeEyetracker::connected:
+     * @eyetracker: the object that received this signal.
+     * @connected: True if the eyetracker is in a connected status.
+     *
+     * Emitted once the eyetracker is (dis-)connected to its host.
+     * Although, it is possible that the eyetracker makes an connection in another
+     * thread, the signal should be emitted in the thread in which the eyetracker
+     * was created.
+     */
+    signals[CONNECTED] = g_signal_new(
+            "connected",
+            GEYE_TYPE_EYETRACKER,
+            G_SIGNAL_RUN_FIRST | G_SIGNAL_NO_RECURSE,
+            0, //G_STRUCT_OFFSET(GEyeEyetrackerInterface, set_connected),
+            NULL,
+            NULL,
+            NULL,
+            G_TYPE_NONE,
+            1,
+            G_TYPE_BOOLEAN);
+
+    /**
+     * GEyeEyetracker::cal-point-start:
+     * @eyetracker: the object that received this signal
+     * @x: the x coordinate at which this dot should be presented
+     * @y: the y coordinate at which this dot should be presented
+     *
+     * An eyetracker "learns" where a participant is looking at the screen
+     * by presenting calibrations dots at specific points at the screen and
+     * keeping track of where the participant is looking for each calibration
+     * point.
+     * This signal is emitted during calibration and validation. At tells the
+     * user of where a calibration point should be presented.
+     */
+    signals[CAL_POINT_START] = g_signal_new(
+            "cal-point-start",
+            GEYE_TYPE_EYETRACKER,
+            G_SIGNAL_RUN_FIRST | G_SIGNAL_NO_RECURSE,
+            0, //G_STRUCT_OFFSET(GEyeEyetrackerInterface, set_connected),
+            NULL, NULL,
+            NULL,
+            G_TYPE_NONE,
+            2, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
+
+    /**
+     * GEyeEyetracker::cal-point-start:
+     * @eyetracker: the object that received this signal
+     * @x: the x coordinate at which this dot should be presented
+     * @y: the y coordinate at which this dot should be presented
+     *
+     * An eyetracker "learns" where a participant is looking at the screen
+     * by presenting calibrations dots at specific points at the screen and
+     * keeping track of where the participant is looking for each calibration
+     * point.
+     * This signal is emitted during calibration and validation. At tells the
+     * user of where a calibration point should be presented.
+     */
+    signals[CAL_POINT_STOP] = g_signal_new(
+            "cal-point-stop",
+            GEYE_TYPE_EYETRACKER,
+            G_SIGNAL_RUN_FIRST | G_SIGNAL_NO_RECURSE,
+            0, //G_STRUCT_OFFSET(GEyeEyetrackerInterface, set_connected),
+            NULL, NULL,
+            NULL,
+            G_TYPE_NONE,
+            0);
+        
 }
 
 void

@@ -109,7 +109,6 @@ struct _GEyeEyetrackerInterface {
     gboolean (*send_key_press)      (GEyeEyetracker            *et,
                                      guint16                    key_code,
                                      guint                      modifiers);
-
 };
 
 G_MODULE_EXPORT void

@@ -33,26 +33,28 @@ G_MODULE_EXPORT
 G_DECLARE_FINAL_TYPE(GEyeEyelinkEt, geye_eyelink_et, GEYE, EYELINK_ET, GObject)
 
 struct _GEyeEyelinkEt {
-    GObject      parent;
-    char*        ip_address;
-    gboolean     simulated;
-    GThread*     eyelink_thread;
-    gboolean     stop_thread;
-    gboolean     connected;
-    gboolean     tracking;
-    gboolean     recording;
-    guint        num_calpoints;
-    gdouble      disp_width;
-    gdouble      disp_height;
+    GObject         parent;
+    char*           ip_address;
+    gboolean        simulated;
+    GThread*        eyelink_thread;
+    gboolean        stop_thread;
+    gboolean        connected;
+    gboolean        tracking;
+    gboolean        recording;
+    guint           num_calpoints;
+    gdouble         disp_width;
+    gdouble         disp_height;
     /* Talk from instance to thread */
-    GAsyncQueue* instance_to_thread;
+    GAsyncQueue*    instance_to_thread;
     /* Replies are send back via this queue */
-    GAsyncQueue* thread_to_instance;
+    GAsyncQueue*    thread_to_instance;
 
-    guint8*      image_data; //RGBA
-    gsize        image_size; // width * height * 4.
+    guint8*         image_data; //RGBA
+    gsize           image_size; // width * height * 4.
 
-    gboolean     quit_hooks;
+    gboolean        quit_hooks;
+
+    GMainContext   *main_context; // The context in which signal will be emitted.
 
     /*
      * Callbacks for end users, although using signals is
