@@ -86,13 +86,50 @@ et_reply(GEyeEyelinkEt* self, ThreadMsg* msg) {
     g_async_queue_push(self->thread_to_instance, msg);
 }
 
-struct connect_info {
+/*
+ * Helpers for to communicate the signals to the main thread.
+ */
+
+typedef struct connect_info {
     GEyeEyetracker *self;
     gboolean        connected;
-};
+}connect_info;
 
-void free_connect_info (gpointer data) {
+static connect_info*
+connect_info_create(GEyeEyetracker* self, gboolean connected)
+{
+    struct connect_info *ret = g_new0(connect_info, 1);
+    ret->self = g_object_ref(self);
+    ret->connected = connected;
+    return ret;
+}
+
+static void
+connect_info_free (gpointer data) {
     struct connect_info* info = data;
+    g_object_unref(info->self);
+    g_free(info);
+}
+
+typedef struct calpoint_info {
+    GEyeEyetracker *self;
+    gdouble x, y;   // the coordinate for calpoint start
+} calpoint_info;
+
+static calpoint_info*
+calpoint_info_create (GEyeEyetracker* et, gdouble x, gdouble y)
+{
+    calpoint_info *info = g_new0(calpoint_info, 1);
+    info->self = g_object_ref(et);
+    info->x = x;
+    info->y = y;
+    return info;
+}
+
+static void
+calpoint_info_free(gpointer data)
+{
+    calpoint_info *info = data;
     g_object_unref(info->self);
     g_free(info);
 }
@@ -107,6 +144,32 @@ emit_connected(gpointer data)
     g_signal_emit_by_name(
             info->self,
             "connected", info->connected);
+    return G_SOURCE_REMOVE;
+}
+
+static gint
+emit_calpoint_start(gpointer data)
+{
+    calpoint_info *info = data;
+    g_assert(g_main_context_is_owner(
+            GEYE_EYELINK_ET(info->self)->main_context));
+
+    g_signal_emit_by_name(info->self,
+                          "calpoint-start",
+                          info->x, info->y
+                          );
+    return G_SOURCE_REMOVE;
+}
+
+static gint
+emit_calpoint_stop(gpointer data)
+{
+    calpoint_info *info = data;
+    g_assert(g_main_context_is_owner(
+            GEYE_EYELINK_ET(info->self)->main_context));
+
+    g_signal_emit_by_name(info->self,
+                          "calpoint-stop");
     return G_SOURCE_REMOVE;
 }
 
@@ -137,16 +200,14 @@ et_connect(GEyeEyelinkEt* self) {
     self->connected = ret == 0;
 
     if (self->main_context) {
-        struct connect_info *connected = g_malloc0(sizeof(gboolean));
-        connected->connected = ret == 0;
-        connected->self = g_object_ref(self);
+        connect_info *connected = connect_info_create(self, ret == 0);
 
         g_main_context_invoke_full(
             self->main_context,
             G_PRIORITY_DEFAULT,
             emit_connected,
             connected,
-            free_connect_info
+            connect_info_free
         );
     }
 }
@@ -166,7 +227,7 @@ et_disconnect(GEyeEyelinkEt* self)
                 G_PRIORITY_DEFAULT,
                 emit_connected,
                 connected,
-                free_connect_info
+                connect_info_free
         );
     }
 
@@ -419,6 +480,17 @@ eyelink_hook_draw_cal_target(void *data, float x, float y)
                 et, x, y, self->cb_calpoint_start_data
         );
     }
+
+    if (self->main_context) {
+        calpoint_info * info = calpoint_info_create(self, x, y);
+
+        g_main_context_invoke_full(self->main_context,
+                                   G_PRIORITY_DEFAULT,
+                                   emit_calpoint_start,
+                                   info,
+                                   calpoint_info_free);
+    }
+
     return 0;
 }
 
@@ -433,6 +505,17 @@ eyelink_hook_erase_cal_target(void *data)
                 et, self->cb_calpoint_stop_data
         );
     }
+
+    if (self->main_context) {
+        calpoint_info * info = calpoint_info_create(self, 0, 0);
+
+        g_main_context_invoke_full(self->main_context,
+                                   G_PRIORITY_DEFAULT,
+                                   emit_calpoint_stop,
+                                   info,
+                                   calpoint_info_free);
+    }
+
     return 0;
 }
 

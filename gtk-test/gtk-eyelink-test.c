@@ -30,14 +30,6 @@ typedef struct EyetrackerData {
     GtkWidget*      darea;          // The GtkDrawingArea for cal graphics.
 } EyetrackerData;
 
-typedef struct CalpointPars {
-    GEyeEyetracker *et;
-    gboolean needs_dot;
-    gdouble x;
-    gdouble y;
-    gpointer data;
-} CalpointPars;
-
 typedef struct ImagePars {
     GEyeEyetracker *et;
     cairo_surface_t* surf;
@@ -103,39 +95,29 @@ on_key_press(GtkWidget* darea, GdkEvent* event, gpointer data)
     return TRUE;
 }
 
-
-gboolean
-on_calpoint_start(gpointer data)
+void
+on_calpoint_start(GEyeEyetracker* et, gdouble x, gdouble y, gpointer data)
 {
-    CalpointPars *pars = data;
-    EyetrackerData *testdata = pars->data;
-    testdata->is_calibrating = TRUE;
-    testdata->cal_data.needs_dot = pars->needs_dot;
-    testdata->cal_data.x = pars->x;
-    testdata->cal_data.y = pars->y;
+    (void) et;
+    EyetrackerData *testdata = data;
 
-    g_free(data);
+    testdata->is_calibrating = TRUE;
+    testdata->cal_data.needs_dot = TRUE;
+    testdata->cal_data.x = x;
+    testdata->cal_data.y = y;
 
     gtk_widget_queue_draw(testdata->darea);
-
-    return G_SOURCE_REMOVE;
 }
 
-gboolean
-on_calpoint_stop(gpointer data)
+void
+on_calpoint_stop(GEyeEyetracker* et, gpointer data)
 {
-    CalpointPars *pars = data;
-    EyetrackerData *testdata = pars->data;
+    (void) et;
+    EyetrackerData *testdata = data;
     testdata->is_calibrating = TRUE;
-    testdata->cal_data.needs_dot = pars->needs_dot;
-    testdata->cal_data.x = pars->x;
-    testdata->cal_data.y = pars->y;
-
-    g_free(data);
+    testdata->cal_data.needs_dot = FALSE;
 
     gtk_widget_queue_draw(testdata->darea);
-
-    return G_SOURCE_REMOVE;
 }
 
 gboolean
@@ -155,44 +137,6 @@ on_setup_image(gpointer data) {
     // image_pars_destroy(pars);
     gtk_widget_queue_draw(testdata->darea);
     return G_SOURCE_REMOVE;
-}
-
-void
-calpoint_start(GEyeEyetracker* et, gdouble x, gdouble y, gpointer data)
-{
-    CalpointPars * pars = g_malloc0(sizeof(CalpointPars));
-    pars->et = et;
-    pars->x = x;
-    pars->y = y;
-    pars->needs_dot = TRUE;
-    pars->data = data;
-    GSource* calpoint_source = g_idle_source_new();
-    g_source_set_callback(
-            calpoint_source,
-            G_SOURCE_FUNC(on_calpoint_start),
-            pars,
-            NULL
-            );
-    g_source_attach(calpoint_source, g_main_context_default());
-}
-
-void
-calpoint_stop(GEyeEyetracker* et, gpointer data)
-{
-    CalpointPars * pars = g_malloc0(sizeof(CalpointPars));
-    pars->et = et;
-    pars->x = 0;
-    pars->y = 0;
-    pars->needs_dot = FALSE;
-    pars->data = data;
-    GSource* calpoint_source = g_idle_source_new();
-    g_source_set_callback(
-            calpoint_source,
-            G_SOURCE_FUNC(on_calpoint_stop),
-            pars,
-            NULL
-    );
-    g_source_attach(calpoint_source, g_main_context_default());
 }
 
 void setup_image(
@@ -300,7 +244,7 @@ setup_eyelink()
 }
 
 void
-print_connected(GEyeEyetracker* et, gboolean connected, gpointer data)
+on_et_connected(GEyeEyetracker* et, gboolean connected, gpointer data)
 {
     (void) et;
     EyetrackerData *testdata = data;
@@ -308,6 +252,15 @@ print_connected(GEyeEyetracker* et, gboolean connected, gpointer data)
     gtk_widget_set_sensitive(testdata->cal_button, connected);
     gtk_widget_set_sensitive(testdata->val_button, connected);
     gtk_widget_set_sensitive(testdata->setup_button, connected);
+
+    g_signal_connect(et,
+                     "calpoint-start",
+                     G_CALLBACK(on_calpoint_start),
+                     data);
+    g_signal_connect(et,
+                     "calpoint-stop",
+                     G_CALLBACK(on_calpoint_stop),
+                     data);
 }
 
 void
@@ -339,7 +292,7 @@ select_eyetracker(GtkComboBox* widget, gpointer data)
             g_signal_connect(
                     testdata->et,
                     "connected",
-                    G_CALLBACK(print_connected),
+                    G_CALLBACK(on_et_connected),
                     testdata);
 
             geye_eyetracker_connect(testdata->et, &error);
@@ -351,12 +304,6 @@ select_eyetracker(GtkComboBox* widget, gpointer data)
                 g_clear_error(&error);
             }
             else {
-                geye_eyetracker_set_calpoint_start_cb(
-                        testdata->et, calpoint_start, testdata
-                        );
-                geye_eyetracker_set_calpoint_stop_cb(
-                        testdata->et, calpoint_stop, testdata
-                        );
                 geye_eyetracker_set_image_data_cb(
                         testdata->et, setup_image, testdata
                         );
@@ -379,11 +326,10 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
 
     gtk_render_background(context, cr, 0, 0, width, height);
 
-    circle_rad = width/50;
-    s_circle_rad = height/200;
+    circle_rad   = width/50.0;
+    s_circle_rad = width/200.0;
 
     // clear background
-
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
     cairo_rectangle(cr, 0, 0, width, height);
     cairo_fill(cr);
@@ -432,6 +378,7 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
         cairo_fill(cr);
         testdata-> is_cam_setup = FALSE;
     }
+    
     return FALSE;
 }
 

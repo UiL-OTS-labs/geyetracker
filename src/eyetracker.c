@@ -96,7 +96,7 @@ geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
             G_TYPE_BOOLEAN);
 
     /**
-     * GEyeEyetracker::cal-point-start:
+     * GEyeEyetracker::calpoint-start:
      * @eyetracker: the object that received this signal
      * @x: the x coordinate at which this dot should be presented
      * @y: the y coordinate at which this dot should be presented
@@ -109,7 +109,7 @@ geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
      * user of where a calibration point should be presented.
      */
     signals[CAL_POINT_START] = g_signal_new(
-            "cal-point-start",
+            "calpoint-start",
             GEYE_TYPE_EYETRACKER,
             G_SIGNAL_RUN_FIRST | G_SIGNAL_NO_RECURSE,
             0, //G_STRUCT_OFFSET(GEyeEyetrackerInterface, set_connected),
@@ -119,20 +119,15 @@ geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
             2, G_TYPE_DOUBLE, G_TYPE_DOUBLE);
 
     /**
-     * GEyeEyetracker::cal-point-start:
+     * GEyeEyetracker::calpoint-stop:
      * @eyetracker: the object that received this signal
-     * @x: the x coordinate at which this dot should be presented
-     * @y: the y coordinate at which this dot should be presented
      *
-     * An eyetracker "learns" where a participant is looking at the screen
-     * by presenting calibrations dots at specific points at the screen and
-     * keeping track of where the participant is looking for each calibration
-     * point.
-     * This signal is emitted during calibration and validation. At tells the
-     * user of where a calibration point should be presented.
+     * This signal is emitted during calibration and validation. This signal
+     * tells the user that the previously presented dot isn't necessary
+     * anymore and can be erased.
      */
     signals[CAL_POINT_STOP] = g_signal_new(
-            "cal-point-stop",
+            "calpoint-stop",
             GEYE_TYPE_EYETRACKER,
             G_SIGNAL_RUN_FIRST | G_SIGNAL_NO_RECURSE,
             0, //G_STRUCT_OFFSET(GEyeEyetrackerInterface, set_connected),
@@ -140,7 +135,7 @@ geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
             NULL,
             G_TYPE_NONE,
             0);
-        
+
 }
 
 void
