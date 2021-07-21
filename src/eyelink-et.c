@@ -44,6 +44,7 @@ geye_eyelink_et_init(GEyeEyelinkEt* self) {
 
     self->main_context          = g_main_context_ref_thread_default();
 
+    g_rec_mutex_init(&self->lock);
     // keep this last, otherwise the queue might be NULL
     self->eyelink_thread        = eyelink_thread_start(self);
 }
@@ -252,6 +253,8 @@ eyelink_et_finalize(GObject* gobject)
 {
     GEyeEyelinkEt* self = GEYE_EYELINK_ET(gobject);
     g_free(self->ip_address);
+    g_rec_mutex_clear(&self->lock);
+
     G_OBJECT_CLASS(geye_eyelink_et_parent_class)->finalize(gobject);
 }
 
@@ -398,6 +401,8 @@ geye_eyelink_et_set_simulated(
     g_return_if_fail(GEYE_IS_EYELINK_ET(self));
     g_return_if_fail(error == NULL || *error == NULL);
 
+    g_rec_mutex_lock(&self->lock);
+
     if (self->connected) {
         g_set_error(
                 error,
@@ -406,7 +411,12 @@ geye_eyelink_et_set_simulated(
                 "Set simulated mode prior to connecting to the eyetracker"
         );
     }
-    self->simulated = simulated;
+    else {
+        self->simulated = simulated;
+
+    }
+
+    g_rec_mutex_unlock(&self->lock);
 }
 
 /**
@@ -419,7 +429,13 @@ gboolean
 geye_eyelink_et_get_simulated(GEyeEyelinkEt* self)
 {
     g_return_val_if_fail(GEYE_IS_EYELINK_ET(self), FALSE);
-    return self->simulated;
+    gboolean simulated;
+
+    g_rec_mutex_lock(&self->lock);
+    simulated = self->simulated;
+    g_rec_mutex_unlock(&self->lock);
+
+    return simulated;
 }
 
 /**
@@ -439,6 +455,8 @@ void geye_eyelink_et_set_display_dimensions(
 {
     g_return_if_fail(GEYE_IS_EYELINK_ET(self));
 
+    g_rec_mutex_lock(&self->lock);
     self->disp_width = width;
     self->disp_height= height;
+    g_rec_mutex_unlock(&self->lock);
 }

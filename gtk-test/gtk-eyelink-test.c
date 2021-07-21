@@ -378,7 +378,7 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
         cairo_fill(cr);
         testdata-> is_cam_setup = FALSE;
     }
-    
+
     return FALSE;
 }
 

@@ -27,7 +27,6 @@ static gsize       EYELINK_PIXEL_SIZE = 4; //RGBA
 
 typedef enum {
     ET_STOP,
-    ET_ACKNOWLEDGE,
     ET_FAIL,
     ET_CONNECT,
     ET_DISCONNECT,
@@ -39,21 +38,15 @@ typedef enum {
     ET_STOP_SETUP,
     ET_SETUP_KEY,
     ET_CALIBRATE,
-    ET_VALIDATE,
-    ET_SET_IMG_CB
+    ET_VALIDATE
 } ThreadMsgType;
 
-typedef struct ThreadCBMessage{
-    void    (*func)(void);
-    gpointer  data;
-}ThreadCBMessage;
 
 typedef struct {
     ThreadMsgType type;
     union ThreadContent {
         InputEvent      event;
         guint           num_calpoints;
-        ThreadCBMessage cb;
     } content;
 } ThreadMsg;
 
@@ -62,6 +55,7 @@ et_send_message(GEyeEyelinkEt* self, ThreadMsg* msg) {
     g_async_queue_push(self->instance_to_thread, msg);
 }
 
+/*
 static ThreadMsg*
 et_receive_reply(GEyeEyelinkEt* self)
 {
@@ -69,7 +63,6 @@ et_receive_reply(GEyeEyelinkEt* self)
     return msg;
 }
 
-/*
 static ThreadMsg*
 et_receive_reply_timeout(GEyeEyelinkEt* self, guint64 timeout_us)
 {
@@ -177,6 +170,7 @@ static void
 et_connect(GEyeEyelinkEt* self) {
 
     int ret, mode;
+    g_rec_mutex_lock(&self->lock);
 
     if (self->ip_address) {
         // this initializes the library.
@@ -200,7 +194,8 @@ et_connect(GEyeEyelinkEt* self) {
     self->connected = ret == 0;
 
     if (self->main_context) {
-        connect_info *connected = connect_info_create(self, ret == 0);
+        connect_info *connected = connect_info_create(
+            GEYE_EYETRACKER(self), ret == 0);
 
         g_main_context_invoke_full(
             self->main_context,
@@ -210,11 +205,13 @@ et_connect(GEyeEyelinkEt* self) {
             connect_info_free
         );
     }
+    g_rec_mutex_unlock(&self->lock);
 }
 
 static void
 et_disconnect(GEyeEyelinkEt* self)
 {
+    g_rec_mutex_lock(&self->lock);
     close_eyelink_connection();
 
     if (self->main_context) {
@@ -223,79 +220,93 @@ et_disconnect(GEyeEyelinkEt* self)
         connected->self = g_object_ref(self);
 
         g_main_context_invoke_full(
-                self->main_context,
-                G_PRIORITY_DEFAULT,
-                emit_connected,
-                connected,
-                connect_info_free
+            self->main_context,
+            G_PRIORITY_DEFAULT,
+            emit_connected,
+            connected,
+            connect_info_free
         );
     }
-
+    g_rec_mutex_unlock(&self->lock);
 }
 
 static void
 et_start_tracking(GEyeEyelinkEt* self)
 {
     int result;
-    ThreadMsg *msg;
     gint16 rec_samples = 0, rec_events = 0;
+
+    g_rec_mutex_lock(&self->lock);
+
     if (self->recording)
         rec_samples = 1, rec_events =1;
 
     result = start_recording(rec_samples, rec_events, 1, 1);
-    msg = g_malloc0(sizeof(ThreadMsg));
-    if (result != 0)
-        msg->type = ET_FAIL;
+    if (result != OK_RESULT)
+        g_critical("Unable to start tracking");
     else
-        msg->type = ET_ACKNOWLEDGE;
+        self->tracking = TRUE;
 
-    et_reply(self, msg);
+    g_rec_mutex_unlock(&self->lock);
 }
 
 static void
 et_stop_tracking(GEyeEyelinkEt* self)
 {
-    ThreadMsg *msg;
     int result;
     gint16 rec_samples = 0, rec_events = 0;
+
+    g_rec_mutex_lock(&self->lock);
+
     if (self->recording)
         rec_samples = 1, rec_events =1;
 
     result = start_recording(rec_samples, rec_events, 0, 0);
-    msg = g_malloc0(sizeof(ThreadMsg));
-    if (result != 0)
-        msg->type = ET_FAIL;
+    if (result != OK_RESULT)
+        g_critical("Unable to stop tracking");
     else
-        msg->type = ET_ACKNOWLEDGE;
-    et_reply(self, msg);
+        self->tracking = FALSE;
+
+    g_rec_mutex_unlock(&self->lock);
 }
 
 static void
 et_start_recording(GEyeEyelinkEt* self)
 {
-    ThreadMsg *msg;
+    gint ret;
     gint16 track_samples = 0, track_events = 0;
-    if (self->tracking)
-        track_samples = 1, track_events =1;
 
-    start_recording(1, 1, track_samples, track_events);
-    msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_ACKNOWLEDGE;
-    et_reply(self, msg);
+    g_rec_mutex_lock(&self->lock);
+    if (self->tracking)
+        track_samples = 1, track_events = 1;
+
+    ret = start_recording(1, 1, track_samples, track_events);
+    if (ret != OK_RESULT)
+        g_critical("Unable to start recording");
+    else
+        self->recording = TRUE;
+
+    g_rec_mutex_unlock(&self->lock);
 }
 
 static void
 et_stop_recording(GEyeEyelinkEt* self)
 {
-    ThreadMsg *msg;
+    gint ret;
     gint16 track_samples = 0, track_events = 0;
+
+    g_rec_mutex_lock(&self->lock);
+
     if (self->tracking)
         track_samples = 1, track_events = 1;
 
-    start_recording(0, 0, track_samples, track_events);
-    msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_ACKNOWLEDGE;
-    et_reply(self, msg);
+    ret = start_recording(0, 0, track_samples, track_events);
+    if (ret != OK_RESULT)
+        g_critical("Unable to stop recording");
+    else
+        self->recording = TRUE;
+
+    g_rec_mutex_unlock(&self->lock);
 }
 
 static void
@@ -313,6 +324,9 @@ static gboolean
 et_calibration_setup(GEyeEyelinkEt* self)
 {
     int ret;
+
+    g_rec_mutex_lock(&self->lock);
+
     guint ndots = self->num_calpoints;
     const char* screen_pixel_coords = "screen_pixel_coords = 0 0 %d %d";
 
@@ -332,6 +346,8 @@ et_calibration_setup(GEyeEyelinkEt* self)
         g_critical("Unable to setup calibration type ncaldots=%d", ndots);
         return FALSE;
     }
+
+    g_rec_mutex_unlock(&self->lock);
 
     return ret == OK_RESULT;
 }
@@ -381,12 +397,7 @@ handle_msg(GEyeEyelinkEt* self, ThreadMsg* msg)
         case ET_VALIDATE:
             et_calibrate(self);
             break;
-        case ET_SET_IMG_CB:
-            self->cb_image_data = (geye_image_data_func ) msg->content.cb.func;
-            self->cb_image_data_data = msg->content.cb.data;
-            break;
         case ET_STOP_SETUP:
-        case ET_ACKNOWLEDGE:
         default:
             g_warning("Unexpected message type %d", type);
     }
@@ -447,11 +458,17 @@ eyelink_hook_setup_cal_display(void* data)
     g_print("Trace %s:%d\n", __func__ , __LINE__);
     GEyeEyelinkEt *self = data;
     GEyeEyetracker *et = data;
+
+    g_rec_mutex_lock(&self->lock);
+
     if (self->cb_start_calibration) {
         self->cb_start_calibration(
                 et, self->cb_start_calibration_data
                 );
     }
+
+    g_rec_mutex_unlock(&self->lock);
+
     return 0;
 }
 
@@ -460,11 +477,16 @@ eyelink_hook_clear_cal_display(void* data)
 {
     g_print("Trace %s:%d\n", __func__ , __LINE__);
     GEyeEyelinkEt *self = data;
+
+    g_rec_mutex_lock(&self->lock);
+
     if (self->cb_stop_calibration) {
         self->cb_stop_calibration (
                 GEYE_EYETRACKER(self), self->cb_stop_calibration_data
         );
     }
+
+    g_rec_mutex_unlock(&self->lock);
 
     return 0;
 }
@@ -475,6 +497,9 @@ eyelink_hook_draw_cal_target(void *data, float x, float y)
     g_print("Trace %s:%d\n", __func__ , __LINE__);
     GEyeEyelinkEt *self = data;
     GEyeEyetracker *et = data;
+
+    g_rec_mutex_lock(&self->lock);
+
     if (self->cb_calpoint_start) {
         self->cb_calpoint_start(
                 et, x, y, self->cb_calpoint_start_data
@@ -482,7 +507,7 @@ eyelink_hook_draw_cal_target(void *data, float x, float y)
     }
 
     if (self->main_context) {
-        calpoint_info * info = calpoint_info_create(self, x, y);
+        calpoint_info * info = calpoint_info_create(GEYE_EYETRACKER(self), x, y);
 
         g_main_context_invoke_full(self->main_context,
                                    G_PRIORITY_DEFAULT,
@@ -490,6 +515,8 @@ eyelink_hook_draw_cal_target(void *data, float x, float y)
                                    info,
                                    calpoint_info_free);
     }
+
+    g_rec_mutex_unlock(&self->lock);
 
     return 0;
 }
@@ -500,6 +527,9 @@ eyelink_hook_erase_cal_target(void *data)
     g_print("Trace %s:%d\n", __func__ , __LINE__);
     GEyeEyelinkEt *self = data;
     GEyeEyetracker *et = data;
+
+    g_rec_mutex_lock(&self->lock);
+
     if (self->cb_calpoint_stop) {
         self->cb_calpoint_stop(
                 et, self->cb_calpoint_stop_data
@@ -507,7 +537,7 @@ eyelink_hook_erase_cal_target(void *data)
     }
 
     if (self->main_context) {
-        calpoint_info * info = calpoint_info_create(self, 0, 0);
+        calpoint_info *info = calpoint_info_create(GEYE_EYETRACKER(self), 0, 0);
 
         g_main_context_invoke_full(self->main_context,
                                    G_PRIORITY_DEFAULT,
@@ -516,6 +546,8 @@ eyelink_hook_erase_cal_target(void *data)
                                    calpoint_info_free);
     }
 
+    g_rec_mutex_unlock(&self->lock);
+
     return 0;
 }
 
@@ -523,7 +555,6 @@ static gint16
 eyelink_hook_setup_image_display(gpointer data, gint16 width, gint16 height)
 {
     GEyeEyelinkEt* et = data;
-    (void) et;
     gsize imbufsz = width * height * EYELINK_PIXEL_SIZE;
     g_print("Setup image display %d %d %lu\n", width, height, imbufsz);
     eyelink_thread_setup_image_data(et, imbufsz);
@@ -539,11 +570,15 @@ eyelink_hook_clear_image_display(gpointer data)
     return 0;
 }
 
-gint16 eyelink_hook_draw_image(
+gint16
+eyelink_hook_draw_image(
         void* data, gint16 width, gint16 height, guint8* bytes
         )
 {
     GEyeEyelinkEt *self = data;
+
+    g_rec_mutex_lock(&self->lock);
+
     if (self->cb_image_data) {
         guint w = width;
         guint h = height;
@@ -571,8 +606,7 @@ gint16 eyelink_hook_draw_image(
                             self->cb_image_data_data);
     }
 
-    g_print("in draw image %p, %d, %d %p\n",
-            data, width, height, (void*)bytes);
+    g_rec_mutex_unlock(&self->lock);
 
     return 0;
 }
@@ -679,12 +713,14 @@ eyelink_thread(gpointer data)
     while (!self->stop_thread) {
         gboolean didsomething = FALSE;
 
+        g_rec_mutex_lock(&self->lock);
         if (self->tracking) {
             gboolean received_event;
             received_event = handle_events(self);
             if (received_event)
                 didsomething = TRUE;
         }
+        g_rec_mutex_unlock(&self->lock);
 
         if (didsomething)
             monitor_main_thread(self, FALSE);
@@ -716,6 +752,7 @@ eyelink_thread_stop(GEyeEyelinkEt* self)
 void
 eyelink_thread_connect(GEyeEyelinkEt* self, GError** error)
 {
+    (void) error;
     ThreadMsg* msg = g_malloc0(sizeof(ThreadMsg));
     msg->type = ET_CONNECT;
     et_send_message(self, msg);
@@ -725,7 +762,11 @@ void
 eyelink_thread_disconnect(GEyeEyelinkEt* self)
 {
     ThreadMsg* msg;
-    if (!self->connected)
+    gboolean connected;
+    g_rec_mutex_lock(&self->lock);
+    connected = self->connected;
+    g_rec_mutex_unlock(&self->lock);
+    if (!connected)
         return;
 
     msg = g_malloc0(sizeof(ThreadMsg));
@@ -736,92 +777,99 @@ eyelink_thread_disconnect(GEyeEyelinkEt* self)
 void eyelink_thread_start_tracking(GEyeEyelinkEt* self, GError** error)
 {
     ThreadMsg* msg;
-    if (!self->connected) {
+
+    g_rec_mutex_lock(&self->lock);
+
+    if (self->connected) {
         g_set_error(error,
                     geye_eyetracker_error_quark(),
                     GEYE_EYETRACKER_ERROR_INCORRECT_MODE,
                     "The eyelink must be connected.");
     }
+    else {
+        msg = g_malloc0(sizeof(ThreadMsg));
+        msg->type = ET_START_TRACKING;
+        et_send_message(self, msg);
+    }
 
-    msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_START_TRACKING;
-    et_send_message(self, msg);
-    msg = et_receive_reply(self);
-    if (msg->type != ET_ACKNOWLEDGE)
-        g_warning("The eyelink thread didn't acknowledge start tracking");
-    self->tracking = TRUE;
-    g_free(msg);
+    g_rec_mutex_unlock(&self->lock);
 }
 
 void eyelink_thread_stop_tracking(GEyeEyelinkEt* self)
 {
     ThreadMsg* msg;
-    if (!self->connected)
-        return;
 
-    msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_STOP_TRACKING;
-    et_send_message(self, msg);
-    msg = et_receive_reply(self);
-    if (msg->type != ET_ACKNOWLEDGE)
-        g_warning("The eyelink thread didn't acknowledge stop tracking");
-    self->tracking = FALSE;
-    g_free(msg);
+    g_rec_mutex_lock(&self->lock);
+
+    if (self->connected) {
+        msg = g_malloc0(sizeof(ThreadMsg));
+        msg->type = ET_STOP_TRACKING;
+        et_send_message(self, msg);
+    }
+
+    g_rec_mutex_unlock(&self->lock);
 }
 
 void eyelink_thread_start_recording(GEyeEyelinkEt* self, GError** error)
 {
     ThreadMsg* msg;
+
+    g_rec_mutex_lock(&self->lock);
+
     if (!self->connected) {
         g_set_error(error,
                     geye_eyetracker_error_quark(),
                     GEYE_EYETRACKER_ERROR_INCORRECT_MODE,
                     "The eyelink must be connected.");
     }
+    else {
+        msg = g_malloc0(sizeof(ThreadMsg));
+        msg->type = ET_START_RECORDING;
+        et_send_message(self, msg);
+    }
 
-    msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_START_RECORDING;
-    et_send_message(self, msg);
-    msg = et_receive_reply(self);
-    if (msg->type != ET_ACKNOWLEDGE)
-        g_warning("The eyelink thread didn't acknowledge start recording");
-    self->recording = TRUE;
-    g_free(msg);
+    g_rec_mutex_unlock(&self->lock);
 }
 
 void eyelink_thread_stop_recording(GEyeEyelinkEt* self)
 {
     ThreadMsg* msg;
-    if (!self->connected)
-        return;
 
-    msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_STOP_RECORDING;
-    et_send_message(self, msg);
-    msg = et_receive_reply(self);
-    if (msg->type != ET_ACKNOWLEDGE)
-        g_warning("The eyelink thread didn't acknowledge stop recording");
-    self->recording = FALSE;
-    g_free(msg);
+    g_rec_mutex_lock(&self->lock);
+
+    if (self->connected) {
+        msg = g_malloc0(sizeof(ThreadMsg));
+        msg->type = ET_STOP_RECORDING;
+        et_send_message(self, msg);
+    }
+
+    g_rec_mutex_unlock(&self->lock);
 }
 
 void eyelink_thread_start_setup(GEyeEyelinkEt* self)
 {
     ThreadMsg* msg;
+
+    g_rec_mutex_lock(&self->lock);
+
     if (!self->connected)
         return;
+    else {
 
-    /* make the thread enter setup mode */
-    msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_START_SETUP;
-    et_send_message(self, msg);
+        /* make the thread enter setup mode */
+        msg = g_malloc0(sizeof(ThreadMsg));
+        msg->type = ET_START_SETUP;
+        et_send_message(self, msg);
 
-    /* Once the thread is in setup fetch images */
-    msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_SETUP_KEY;
-    msg->content.event.key.key = ENTER_KEY;
-    msg->content.event.key.state = KB_PRESS;
-    et_send_message(self, msg);
+        /* Once the thread is in setup fetch images */
+        msg = g_malloc0(sizeof(ThreadMsg));
+        msg->type = ET_SETUP_KEY;
+        msg->content.event.key.key = ENTER_KEY;
+        msg->content.event.key.state = KB_PRESS;
+        et_send_message(self, msg);
+    }
+
+    g_rec_mutex_unlock(&self->lock);
 }
 
 void
@@ -836,34 +884,44 @@ void
 eyelink_thread_calibrate(GEyeEyelinkEt* self, GError **error)
 {
     ThreadMsg *msg;
+
+    g_rec_mutex_lock(&self->lock);
+
     if (!self->connected)
         g_set_error(
                 error,
                 geye_eyetracker_error_quark(),
                 GEYE_EYETRACKER_ERROR_INCORRECT_MODE,
                 "The eyelink is not connected");
+    else {
+        msg = g_malloc0(sizeof(ThreadMsg));
+        msg->type = ET_CALIBRATE;
+        et_send_message(self, msg);
+        eyelink_thread_send_key_press(self, 'c', 0);
+    }
 
-    msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_CALIBRATE;
-    et_send_message(self, msg);
-    eyelink_thread_send_key_press(self, 'c', 0);
+    g_rec_mutex_unlock(&self->lock);
 }
 
 void
 eyelink_thread_validate(GEyeEyelinkEt* self, GError **error)
 {
     ThreadMsg *msg;
+
+    g_rec_mutex_lock(&self->lock);
     if (!self->connected)
         g_set_error(
                 error,
                 geye_eyetracker_error_quark(),
                 GEYE_EYETRACKER_ERROR_INCORRECT_MODE,
                 "The eyelink is not connected");
-
-    msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_VALIDATE;
-    et_send_message(self, msg);
-    eyelink_thread_send_key_press(self, 'v', 0);
+    else {
+        msg = g_malloc0(sizeof(ThreadMsg));
+        msg->type = ET_VALIDATE;
+        et_send_message(self, msg);
+        eyelink_thread_send_key_press(self, 'v', 0);
+    }
+    g_rec_mutex_unlock(&self->lock);
 }
 
 void
@@ -871,42 +929,47 @@ eyelink_thread_set_image_data_cb(GEyeEyelinkEt       *self,
                                  geye_image_data_func cb,
                                  gpointer             data)
 {
-    ThreadMsg *msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_SET_IMG_CB;
-    msg->content.cb.func = G_CALLBACK(cb);
-    msg->content.cb.data = data;
-    et_send_message(self, msg);
+    g_rec_mutex_lock(&self->lock);
+    self->cb_image_data = cb;
+    self->cb_image_data_data = data;
+    g_rec_mutex_unlock(&self->lock);
 }
 
 gboolean
 eyelink_thread_send_key_press(GEyeEyelinkEt * self, guint16 key, guint modifiers)
 {
-    if (!self->connected)
-        return FALSE;
+    gboolean ret = FALSE;
 
-    ThreadMsg *msg = g_malloc0(sizeof(ThreadMsg));
-    guint16 tkey = key; // translated key
+    g_rec_mutex_lock(&self->lock);
 
-    // translate GDK key to what the eyelink seems to understand.
-    // see gdk/gdkkeysyms.h
-    // I could include that, but that makes gdk a dependency.
-    if (key >= 0xffbe && key <= 0xffc9) {// GDK keyvalues for F1 - F12
-        int fkeyval = key - 0xffbe;
-        tkey = (F1_KEY >> 8) + fkeyval;
-        tkey = tkey << 8;
+    if (self->connected) {
+        ThreadMsg *msg = g_malloc0(sizeof(ThreadMsg));
+        guint16 tkey = key; // translated key
+
+        // translate GDK key to what the eyelink seems to understand.
+        // see gdk/gdkkeysyms.h
+        // I could include that, but that makes gdk a dependency.
+        if (key >= 0xffbe && key <= 0xffc9) {// GDK keyvalues for F1 - F12
+            int fkeyval = key - 0xffbe;
+            tkey = (F1_KEY >> 8) + fkeyval;
+            tkey = tkey << 8;
+        }
+
+        if (key == 0xff1b ||
+            key == 0xff0d) // override enter and escape
+            tkey = key - 0xff00;
+
+        msg->type = ET_SETUP_KEY;
+        msg->content.event.key.key = tkey;
+        msg->content.event.key.modifier = modifiers;
+        msg->content.event.key.state = KB_PRESS;
+
+        g_async_queue_push(self->instance_to_thread, msg);
+        ret = TRUE;
     }
+    g_rec_mutex_unlock(&self->lock);
 
-    if (key == 0xff1b ||
-        key == 0xff0d) // override enter and escape
-        tkey = key - 0xff00;
-
-    msg->type = ET_SETUP_KEY;
-    msg->content.event.key.key = tkey;
-    msg->content.event.key.modifier = modifiers;
-    msg->content.event.key.state = KB_PRESS;
-
-    g_async_queue_push(self->instance_to_thread, msg);
-    return TRUE;
+    return ret;
 }
 
 void
@@ -914,17 +977,23 @@ eyelink_thread_setup_image_data (
         GEyeEyelinkEt* self, gsize img_size
         )
 {
+    g_rec_mutex_lock(&self->lock);
+
     if (self->image_data){
         g_free(self->image_data);
     }
     self->image_data = g_malloc(img_size);
     self->image_size = img_size;
     g_assert(self->image_data);
+
+    g_rec_mutex_unlock(&self->lock);
 }
 
 void
 eyelink_thread_clear_image_data(GEyeEyelinkEt* self)
 {
+    g_rec_mutex_lock(&self->lock);
     g_free(self->image_data);
     self->image_data = 0;
+    g_rec_mutex_unlock(&self->lock);
 }

@@ -34,10 +34,12 @@ G_DECLARE_FINAL_TYPE(GEyeEyelinkEt, geye_eyelink_et, GEYE, EYELINK_ET, GObject)
 
 struct _GEyeEyelinkEt {
     GObject         parent;
+
+    GRecMutex       lock;
+
     char*           ip_address;
     gboolean        simulated;
     GThread*        eyelink_thread;
-    gboolean        stop_thread;
     gboolean        connected;
     gboolean        tracking;
     gboolean        recording;
@@ -52,7 +54,8 @@ struct _GEyeEyelinkEt {
     guint8*         image_data; //RGBA
     gsize           image_size; // width * height * 4.
 
-    gboolean        quit_hooks;
+    gboolean        quit_hooks;   // Thread only.
+    gboolean        stop_thread;  // Thread only.
 
     GMainContext   *main_context; // The context in which signal will be emitted.
 
