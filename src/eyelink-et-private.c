@@ -193,6 +193,8 @@ et_connect(GEyeEyelinkEt* self) {
 
     self->connected = ret == 0;
 
+    g_rec_mutex_unlock(&self->lock);
+
     if (self->main_context) {
         connect_info *connected = connect_info_create(
             GEYE_EYETRACKER(self), ret == 0);
@@ -205,7 +207,6 @@ et_connect(GEyeEyelinkEt* self) {
             connect_info_free
         );
     }
-    g_rec_mutex_unlock(&self->lock);
 }
 
 static void
@@ -434,7 +435,6 @@ handle_events(GEyeEyelinkEt* self)
         received_something = TRUE;
         eye = eyelink_eye_available();
         eyelink_get_double_data(&event);
-        g_print("We've gotten an event %d\n", event_type);
         switch (event_type) {
             case SAMPLE_TYPE:
                 if (eye == LEFT) {
@@ -762,16 +762,13 @@ void
 eyelink_thread_disconnect(GEyeEyelinkEt* self)
 {
     ThreadMsg* msg;
-    gboolean connected;
     g_rec_mutex_lock(&self->lock);
-    connected = self->connected;
+    if (self->connected){
+        msg = g_malloc0(sizeof(ThreadMsg));
+        msg->type = ET_DISCONNECT;
+        et_send_message(self, msg);
+    }
     g_rec_mutex_unlock(&self->lock);
-    if (!connected)
-        return;
-
-    msg = g_malloc0(sizeof(ThreadMsg));
-    msg->type = ET_DISCONNECT;
-    et_send_message(self, msg);
 }
 
 void eyelink_thread_start_tracking(GEyeEyelinkEt* self, GError** error)
@@ -852,10 +849,7 @@ void eyelink_thread_start_setup(GEyeEyelinkEt* self)
 
     g_rec_mutex_lock(&self->lock);
 
-    if (!self->connected)
-        return;
-    else {
-
+    if (self->connected) {
         /* make the thread enter setup mode */
         msg = g_malloc0(sizeof(ThreadMsg));
         msg->type = ET_START_SETUP;
@@ -867,6 +861,9 @@ void eyelink_thread_start_setup(GEyeEyelinkEt* self)
         msg->content.event.key.key = ENTER_KEY;
         msg->content.event.key.state = KB_PRESS;
         et_send_message(self, msg);
+    }
+    else {
+        g_warning("Starting setup while not being connected.");
     }
 
     g_rec_mutex_unlock(&self->lock);
