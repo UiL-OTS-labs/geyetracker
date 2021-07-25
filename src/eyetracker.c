@@ -26,6 +26,7 @@ enum signals {
     CONNECTED,
     CAL_POINT_START,
     CAL_POINT_STOP,
+    ERROR,
     N_SIGNALS,
 };
 
@@ -135,6 +136,31 @@ geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
             NULL,
             G_TYPE_NONE,
             0);
+
+    /**
+     * GEyeEyetracker::error
+     * @eyetracker: the object that received this signal,
+     * @error:transfer none: an error that might be helpful in diagnosing
+     *                       a problem in the backend of the eyetracker.
+     *
+     * Sometimes things go bad, due to the design of geye_eyetrackers this
+     * can happen in a thread that inferfaces with the eyetracker. The caller
+     * should generally not wait for the thread to finish its business. However,
+     * something might go wrong in the thread and since the caller isn't waiting
+     * for the error it can't perform subsequent procedures. This signal might
+     * be helpful in diagnosing those problems.
+     */
+     signals[ERROR] = g_signal_new(
+             "error",
+             GEYE_TYPE_EYETRACKER,
+             G_SIGNAL_RUN_FIRST | G_SIGNAL_NO_RECURSE,
+             0,
+             NULL, NULL,
+             NULL,
+             G_TYPE_NONE,
+             1,
+             G_TYPE_STRING
+             );
 
 }
 

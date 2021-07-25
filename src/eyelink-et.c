@@ -261,12 +261,13 @@ eyelink_et_finalize(GObject* gobject)
 typedef enum {
     PROP_NULL,
     PROP_SIMULATED,
+    PROP_IP_ADDRESS,
     N_PROPERTIES,
     PROP_CONNECTED,
     PROP_TRACKING,
     PROP_RECORDING,
     PROP_NUM_CALPOINTS
-}GEyeEyelinkEtProperty;
+} GEyeEyelinkEtProperty;
 
 static GParamSpec* obj_properties[N_PROPERTIES] = {NULL, };
 
@@ -285,6 +286,9 @@ geye_eyelink_et_set_property(GObject       *obj,
     switch((GEyeEyelinkEtProperty) property_id) {
         case PROP_NUM_CALPOINTS:
             geye_eyetracker_set_num_calpoints(et, g_value_get_uint(value));
+            break;
+        case PROP_IP_ADDRESS:
+            geye_eyelink_et_set_ip_address(self, g_value_get_string(value));
             break;
         case PROP_SIMULATED:
         case PROP_CONNECTED:
@@ -318,6 +322,9 @@ geye_eyelink_et_get_property(GObject       *obj,
         case PROP_NUM_CALPOINTS:
             g_value_set_uint(value, self->num_calpoints);
             break;
+        case PROP_IP_ADDRESS:
+            g_value_set_string(value, self->ip_address);
+            break;
         case PROP_NULL:
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
@@ -340,6 +347,14 @@ geye_eyelink_et_class_init(GEyeEyelinkEtClass* klass)
             "If set to true connect to a simulated version of the eyelink",
             FALSE,
             G_PARAM_READABLE
+            );
+
+    obj_properties[PROP_IP_ADDRESS] = g_param_spec_string(
+            "ip-address",
+            "ipaddress",
+            "If set the desired ip-adress of the host pc.",
+            "100.1.1.1",
+            G_PARAM_READWRITE | G_PARAM_CONSTRUCT
             );
 
     g_object_class_install_properties(
@@ -449,7 +464,8 @@ geye_eyelink_et_get_simulated(GEyeEyelinkEt* self)
  * way the host pc or API can compute the coordinates where to set the
  * calibration dots.
  */
-void geye_eyelink_et_set_display_dimensions(
+void
+geye_eyelink_et_set_display_dimensions(
         GEyeEyelinkEt* self, gdouble width, gdouble height
         )
 {
@@ -460,3 +476,64 @@ void geye_eyelink_et_set_display_dimensions(
     self->disp_height= height;
     g_rec_mutex_unlock(&self->lock);
 }
+
+/**
+ * geye_eyelink_get_ip_address:
+ * @self: The eyelink eyetracker instance whose ip you want to obtain.
+ *
+ * The eyelink host can be obtained via another ip address if desired.
+ * it generally can be found at
+ *
+ * Returns: transfer full: a string with the ip of the eyetracker host pc.
+ *                         by default this function returns
+ */
+char*
+geye_eyelink_et_get_ip_address(GEyeEyelinkEt* self)
+{
+    char *ret;
+    g_return_val_if_fail(GEYE_IS_EYELINK_ET(self), NULL);
+
+    g_rec_mutex_lock(&self->lock);
+
+    ret = g_strdup(self->ip_address);
+
+    g_rec_mutex_unlock(&self->lock);
+    return ret;
+}
+
+/**
+ * geye_eyelink_set_ip_address:
+ * @self: The eyelink eyetracker instance whose ip you want to obtain.
+ * @ip_address:nullable: the ip address of the host pc
+ *
+ * If the eyelink is not yet connected, the ip of the host can be
+ * set with this function. If the eyetracker is connected, this function
+ * does nothing.
+ */
+void
+geye_eyelink_et_set_ip_address(GEyeEyelinkEt* self, const char* ip_address)
+{
+    g_return_if_fail(GEYE_IS_EYELINK_ET(self));
+
+    g_rec_mutex_lock(&self->lock);
+
+    if (!self->connected) {
+        if (g_strcmp0(ip_address, self->ip_address) != 0) {
+
+            if (self->ip_address) {
+                g_free(self->ip_address);
+                self->ip_address = NULL;
+            }
+
+            if (ip_address)
+                self->ip_address = g_strdup(ip_address);
+        }
+    }
+    else {
+        g_warning("There is no point in setting the ip-address when its connected");
+    }
+
+    g_rec_mutex_unlock(&self->lock);
+}
+
+

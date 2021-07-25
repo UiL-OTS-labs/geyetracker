@@ -127,6 +127,29 @@ calpoint_info_free(gpointer data)
     g_free(info);
 }
 
+typedef struct error_info {
+    GEyeEyetracker *et;
+    char * error_message;
+} error_info;
+
+static error_info*
+error_info_create_vsnprintf(GEyeEyelinkEt* et, const char* format, va_list args)
+{
+    error_info* info = g_new0(error_info, 1);
+    info->et = g_object_ref(et);
+    info->error_message = g_strdup_vprintf(format, args);
+    return info;
+}
+
+static void
+error_info_free(gpointer data)
+{
+    error_info* info = data;
+    g_free(info->error_message);
+    g_object_unref(info->et);
+    g_free(info);
+}
+
 static gint
 emit_connected(gpointer data)
 {
@@ -166,6 +189,35 @@ emit_calpoint_stop(gpointer data)
     return G_SOURCE_REMOVE;
 }
 
+static gint
+emit_error(gpointer data)
+{
+    error_info *info = data;
+    g_assert(g_main_context_is_owner(
+            GEYE_EYELINK_ET(info->et)->main_context));
+
+    g_signal_emit_by_name(info->et, "error", info->error_message);
+    return G_SOURCE_REMOVE;
+}
+
+static void
+et_signal_error_printf(GEyeEyelinkEt* self, const gchar* format, ...)
+{
+    if (self->main_context) {
+        va_list args;
+        va_start(args, format);
+        error_info *info = error_info_create_vsnprintf(self, format, args);
+        va_end(args);
+        g_main_context_invoke_full(
+                self->main_context,
+                G_PRIORITY_DEFAULT,
+                emit_error,
+                info,
+                error_info_free
+        );
+    }
+}
+
 static void
 et_connect(GEyeEyelinkEt* self) {
 
@@ -175,21 +227,63 @@ et_connect(GEyeEyelinkEt* self) {
     if (self->ip_address) {
         // this initializes the library.
         ret = open_eyelink_connection(-1);
-        if (ret)
+        if (ret) {
             g_warning("Unable to initialize the library");
+            et_signal_error_printf(
+                    self,
+                    "unable to initialize the eyelink lib"
+                    "open_eyelink_connection(-1) returned %d",
+                    ret);
+        }
 
         ret = set_eyelink_address(self->ip_address);
-        if (ret)
+        if (ret) {
             g_warning("Eyelink-Thread:Invalid ip address: \"%s\".",
                       self->ip_address);
+            et_signal_error_printf(
+                    self,
+                    "Unable to set eyelink ip address to\"%s\", "
+                    "set_eyelink_address returned %d",
+                    self->ip_address,
+                    ret);
+        }
     }
 
     if (self->simulated)
-        mode = 1;
+        ret = open_eyelink_connection(1);
     else
-        mode = 0;
+        ret = eyelink_open();
 
-    ret = open_eyelink_connection(mode);
+    if (ret != OK_RESULT) {
+        const char* msg = NULL;
+        switch (ret) {
+            case LINK_INITIALIZE_FAILED:
+                msg = "a link could not be established";
+                break;
+            case CONNECT_TIMEOUT_FAILED:
+                msg = "timeout, no tracker responded";
+                break;
+            case WRONG_LINK_VERSION:
+                msg = "the version of the EyeLink library and tracker are incompatible";
+                break;
+            case OK_RESULT:
+                g_assert_not_reached();
+            default:
+                break;
+        }
+        if (msg) {
+            et_signal_error_printf(
+                    self,
+                    "Unable to open eyelink connection: %s",
+                    msg);
+        } else {
+            et_signal_error_printf(
+                    self,"Unable to open eyelink connection, "
+                         "open_eyelink_connection() failed with %d",
+                         ret
+                    );
+        }
+    }
 
     self->connected = ret == 0;
 
@@ -243,8 +337,14 @@ et_start_tracking(GEyeEyelinkEt* self)
         rec_samples = 1, rec_events =1;
 
     result = start_recording(rec_samples, rec_events, 1, 1);
-    if (result != OK_RESULT)
+    if (result != OK_RESULT) {
         g_critical("Unable to start tracking");
+        et_signal_error_printf(
+                self,
+                "Unable to start tracking, start_recording returned %d",
+                result
+                );
+    }
     else
         self->tracking = TRUE;
 

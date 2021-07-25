@@ -103,6 +103,12 @@ geye_eyelink_et_set_display_dimensions(
         GEyeEyelinkEt*, gdouble width, gdouble height
         );
 
+G_MODULE_EXPORT char*
+geye_eyelink_et_get_ip_address(GEyeEyelinkEt* et);
+
+G_MODULE_EXPORT void
+geye_eyelink_et_set_ip_address(GEyeEyelinkEt* et, const char* address);
+
 
 G_END_DECLS 
 

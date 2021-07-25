@@ -27,7 +27,9 @@ typedef struct EyetrackerData {
 
     CalData         cal_data;       // Specifies the calibration state.
     ImageData       img_data;
-    GtkWidget*      darea;          // The GtkDrawingArea for cal graphics.
+
+    GtkWidget      *darea;          // The GtkDrawingArea for cal graphics.
+    GtkWidget      *error_label;    // a label for error messages.
 } EyetrackerData;
 
 typedef struct ImagePars {
@@ -261,6 +263,15 @@ on_et_connected(GEyeEyetracker* et, gboolean connected, gpointer data)
                      "calpoint-stop",
                      G_CALLBACK(on_calpoint_stop),
                      data);
+    if (connected == TRUE)
+        gtk_label_set_label(testdata->error_label, "");
+}
+
+void on_error(GEyeEyetracker* et, const gchar* message, gpointer data)
+{
+    (void) et;
+    EyetrackerData *testdata = data;
+    gtk_label_set_label(testdata->error_label, message);
 }
 
 void
@@ -294,6 +305,12 @@ select_eyetracker(GtkComboBox* widget, gpointer data)
                     "connected",
                     G_CALLBACK(on_et_connected),
                     testdata);
+            g_signal_connect(
+                    testdata->et,
+                    "error",
+                    G_CALLBACK(on_error),
+                    testdata
+                    );
 
             geye_eyetracker_connect(testdata->et, &error);
             if (error) {
@@ -385,7 +402,7 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
 int main(int argc, char** argv)
 {
     GtkWidget* window, *darea, *cal_button, *val_button, *et_combo;
-    GtkWidget* setup_button, *grid;
+    GtkWidget* setup_button, *grid, *error_label;
     gtk_init(&argc, &argv);
 
     window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -398,6 +415,8 @@ int main(int argc, char** argv)
     gtk_widget_set_sensitive(val_button, FALSE);
     gtk_widget_set_sensitive(setup_button, FALSE);
     darea = gtk_drawing_area_new();
+    error_label = gtk_label_new("Welcom to the gtk geyetracker test");
+    gtk_widget_set_halign(error_label, GTK_ALIGN_START);
 
     GdkEventMask mask = gtk_widget_get_events(darea);
     gtk_widget_set_events(darea,
@@ -418,6 +437,7 @@ int main(int argc, char** argv)
     gtk_grid_attach(GTK_GRID(grid), setup_button, 2, 1, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), cal_button, 3, 1, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), val_button, 4, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), error_label, 0, 2, 5, 1);
 
     for (size_t i = 0;
          i < sizeof(supported_eyetrackers)/sizeof(supported_eyetrackers[0]);
@@ -433,9 +453,9 @@ int main(int argc, char** argv)
         .cal_button = cal_button,
         .val_button = val_button,
         .setup_button = setup_button,
-        .darea = darea
+        .darea = darea,
+        .error_label = error_label
     };
-
 
     g_signal_connect(
             window,

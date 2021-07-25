@@ -76,6 +76,14 @@ typedef struct ConnectData {
 } ConnectData;
 
 static void
+on_error(GEyeEyetracker *et, const gchar* message, gpointer data)
+{
+    (void) et;
+    (void) data;
+    g_warning("%s:\n\t- %s", __func__ , message);
+}
+
+static void
 on_test_connect(GEyeEyetracker* et, gboolean connected, gpointer data)
 {
     ConnectData *cdata = data;
@@ -97,12 +105,64 @@ eyelink_connect(EyelinkFixture* fix, gconstpointer data)
             "connected",
             G_CALLBACK(on_test_connect),
             &connect_info);
+    g_signal_connect(
+            fix->et,
+            "error",
+            G_CALLBACK(on_error),
+            NULL
+            );
 
     g_main_loop_run(fix->loop);
 
     g_object_get(fix->et, "connected", &connected, NULL);
     g_assert_true(connected);
     g_assert_true(connect_info.connected);
+}
+
+typedef struct ConnectErrorData {
+    EyelinkFixture *fix;
+    gboolean error_signalled;
+    char* message;
+} ConnectErrorData;
+
+static void
+on_connect_error(GEyeEyetracker* et, const char* message, gpointer data)
+{
+    (void) et;
+    ConnectErrorData *error_data = data;
+    error_data->error_signalled = TRUE;
+    error_data->message = g_strdup(message);
+
+    g_main_loop_quit(error_data->fix->loop);
+}
+
+static void
+eyelink_connect_error(EyelinkFixture* fix, gconstpointer data)
+{
+    (void) data;
+    ConnectErrorData error_data = {
+        .fix = fix,
+        .message = NULL,
+        .error_signalled = FALSE
+    };
+
+    g_object_set(fix->et,
+                 "ip-address", "blah blah",
+                 NULL);
+
+    g_signal_connect(fix->et,
+                     "error",
+                     G_CALLBACK(on_connect_error),
+                     &error_data);
+
+    geye_eyetracker_connect(GEYE_EYETRACKER(fix->et), NULL);
+
+    g_main_loop_run(fix->loop);
+
+    g_assert_true(error_data.error_signalled);
+    g_assert_cmpstr(error_data.message, != , "");
+
+    g_free(error_data.message);
 }
 
 static void
@@ -348,6 +408,15 @@ int main(int argc, char** argv)
                eyelink_fixture_setup,
                eyelink_connect,
                eyelink_fixture_tear_down);
+
+    g_test_add(
+            "/EyelinkEt/connect_error",
+            EyelinkFixture,
+            &eight,
+            eyelink_fixture_setup,
+            eyelink_connect_error,
+            eyelink_fixture_tear_down
+            );
 
     g_test_add_func(
             "/EyelinkEt/disconnect", eyelink_disconnect
