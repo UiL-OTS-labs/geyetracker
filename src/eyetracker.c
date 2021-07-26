@@ -74,6 +74,15 @@ geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
             );
     g_object_interface_install_property(iface, spec);
 
+    spec = g_param_spec_string(
+            "tracker-info",
+            "Tracker information",
+            "After being connected provides information about the eyetracker.",
+            NULL,
+            G_PARAM_READABLE
+            );
+    g_object_interface_install_property(iface, spec);
+
     /**
      * GEyeEyetracker::connected:
      * @eyetracker: the object that received this signal.
@@ -188,6 +197,32 @@ geye_eyetracker_disconnect(GEyeEyetracker* et)
     iface->disconnect(et);
 }
 
+/**
+ * geye_eyetracker_get_tracker_info:
+ * @et The GEyeEyetracker instance whose tracker information one would like to
+ *     know.
+ *
+ * This method provides a string describing which eyetracker you are using
+ * and which software if all this information is made available by the
+ * library of the vendor.
+ *
+ * Returns:transfer full:
+ *         A string describing which eyetracker you are using. Or NULL when
+ *         it is not available e.g. when the eyetracker isn't connected yet.
+ */
+gchar*
+geye_eyetracker_get_tracker_info(GEyeEyetracker* et)
+{
+    GEyeEyetrackerInterface *iface;
+
+    g_return_val_if_fail(GEYE_IS_EYETRACKER(et), NULL);
+
+    iface = GEYE_EYETRACKER_GET_IFACE(et);
+    g_return_val_if_fail(iface->tracker_info, NULL);
+
+    return iface->tracker_info(et);
+}
+
 void
 geye_eyetracker_start_tracking(GEyeEyetracker* et, GError** error)
 {
@@ -211,6 +246,7 @@ geye_eyetracker_stop_tracking(GEyeEyetracker* et)
     g_return_if_fail(iface->stop_tracking != NULL);
     iface->stop_tracking(et);
 }
+
 void
 geye_eyetracker_start_recording(GEyeEyetracker* et, GError** error)
 {

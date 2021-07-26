@@ -74,11 +74,6 @@ et_receive_reply_timeout(GEyeEyelinkEt* self, guint64 timeout_us)
 }
 */
 
-static void
-et_reply(GEyeEyelinkEt* self, ThreadMsg* msg) {
-    g_async_queue_push(self->thread_to_instance, msg);
-}
-
 /*
  * Helpers for to communicate the signals to the main thread.
  */
@@ -221,7 +216,7 @@ et_signal_error_printf(GEyeEyelinkEt* self, const gchar* format, ...)
 static void
 et_connect(GEyeEyelinkEt* self) {
 
-    int ret, mode;
+    int ret;
     g_rec_mutex_lock(&self->lock);
 
     if (self->ip_address) {
@@ -287,6 +282,18 @@ et_connect(GEyeEyelinkEt* self) {
 
     self->connected = ret == 0;
 
+    if (self->connected) {
+        char eyelink_version_software[256];
+        int type = eyelink_get_tracker_version(eyelink_version_software);
+        char * tracker_info = g_strdup_printf(
+                "EyeLink %d version %s",
+                type,
+                eyelink_version_software);
+        if (self->info)
+            g_free(self->info);
+        self->info = tracker_info;
+    }
+
     g_rec_mutex_unlock(&self->lock);
 
     if (self->main_context) {
@@ -307,11 +314,18 @@ static void
 et_disconnect(GEyeEyelinkEt* self)
 {
     g_rec_mutex_lock(&self->lock);
+
     close_eyelink_connection();
+
+    self->connected = FALSE;
+    g_free(self->info);
+    self->info = NULL;
+
+    g_rec_mutex_unlock(&self->lock);
 
     if (self->main_context) {
         struct connect_info *connected = g_malloc0(sizeof(gboolean));
-        connected->connected = FALSE;
+        connected->connected = self->connected;
         connected->self = g_object_ref(self);
 
         g_main_context_invoke_full(
@@ -322,7 +336,6 @@ et_disconnect(GEyeEyelinkEt* self)
             connect_info_free
         );
     }
-    g_rec_mutex_unlock(&self->lock);
 }
 
 static void

@@ -56,6 +56,9 @@ struct _GEyeEyetrackerInterface {
 
     void (*disconnect)      (GEyeEyetracker    *et);
 
+    gchar* (*tracker_info)  (GEyeEyetracker *et);
+
+
     void (*start_tracking)  (GEyeEyetracker    *et,
                              GError           **error);
 
@@ -77,8 +80,8 @@ struct _GEyeEyetrackerInterface {
     void (*calibrate)       (GEyeEyetracker    *et,
                              GError           **error);
 
-    void (*validate)        (GEyeEyetracker*    et,
-                             GError**           error);
+    void (*validate)        (GEyeEyetracker    *et,
+                             GError           **error);
 
     void (*set_num_calpoints)(GEyeEyetracker   *et, guint n);
     guint (*get_num_calpoints)(GEyeEyetracker  *et);
@@ -116,6 +119,9 @@ geye_eyetracker_connect(GEyeEyetracker* et, GError** error);
 
 G_MODULE_EXPORT void
 geye_eyetracker_disconnect(GEyeEyetracker* et);
+
+G_MODULE_EXPORT gchar*
+geye_eyetracker_get_tracker_info(GEyeEyetracker* et);
 
 G_MODULE_EXPORT void
 geye_eyetracker_start_tracking(GEyeEyetracker* et, GError** error);

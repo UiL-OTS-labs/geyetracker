@@ -38,6 +38,8 @@ struct _GEyeEyelinkEt {
     GRecMutex       lock;
 
     char*           ip_address;
+    char*           info;
+
     gboolean        simulated;
     GThread*        eyelink_thread;
     gboolean        connected;

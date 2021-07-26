@@ -33,12 +33,8 @@ G_DEFINE_TYPE_WITH_CODE(GEyeEyelinkEt,
                                               geye_eyetracker_interface_init)
                         )
 static void
-geye_eyelink_et_init(GEyeEyelinkEt* self) {
-    self->stop_thread           = FALSE;
-    self->connected             = FALSE;
-    self->simulated             = FALSE;
-    self->recording             = FALSE;
-    self->tracking              = FALSE;
+geye_eyelink_et_init(GEyeEyelinkEt* self)
+{
     self->instance_to_thread    = g_async_queue_new_full(g_free);
     self->thread_to_instance    = g_async_queue_new_full(g_free);
 
@@ -59,6 +55,17 @@ static void
 eyelink_et_disconnect(GEyeEyetracker* self)
 {
     eyelink_thread_disconnect(GEYE_EYELINK_ET(self));
+}
+
+static char*
+eyelink_et_get_tracker_info(GEyeEyetracker* self)
+{
+    GEyeEyelinkEt *eyelink = GEYE_EYELINK_ET(self);
+    gchar *ret;
+    g_rec_mutex_lock(&eyelink->lock);
+    ret = g_strdup(eyelink->info);
+    g_rec_mutex_unlock(&eyelink->lock);
+    return ret;
 }
 
 static void
@@ -195,6 +202,8 @@ geye_eyetracker_interface_init(GEyeEyetrackerInterface* iface)
     iface->connect          = eyelink_et_connect;
     iface->disconnect       = eyelink_et_disconnect;
 
+    iface->tracker_info     = eyelink_et_get_tracker_info;
+
     iface->start_tracking   = eyelink_et_start_tracking;
     iface->stop_tracking    = eyelink_et_stop_tracking;
 
@@ -266,7 +275,8 @@ typedef enum {
     PROP_CONNECTED,
     PROP_TRACKING,
     PROP_RECORDING,
-    PROP_NUM_CALPOINTS
+    PROP_NUM_CALPOINTS,
+    PROP_TRACKER_INFO
 } GEyeEyelinkEtProperty;
 
 static GParamSpec* obj_properties[N_PROPERTIES] = {NULL, };
@@ -280,8 +290,6 @@ geye_eyelink_et_set_property(GObject       *obj,
 {
     GEyeEyelinkEt* self = GEYE_EYELINK_ET(obj);
     GEyeEyetracker* et = GEYE_EYETRACKER(self);
-    (void) self;
-    (void) value;
 
     switch((GEyeEyelinkEtProperty) property_id) {
         case PROP_NUM_CALPOINTS:
@@ -292,6 +300,7 @@ geye_eyelink_et_set_property(GObject       *obj,
             break;
         case PROP_SIMULATED:
         case PROP_CONNECTED:
+        case PROP_TRACKER_INFO:
         case PROP_NULL:
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
@@ -305,6 +314,7 @@ geye_eyelink_et_get_property(GObject       *obj,
                              )
 {
     GEyeEyelinkEt* self = GEYE_EYELINK_ET(obj);
+    g_rec_mutex_lock(&self->lock);
 
     switch((GEyeEyelinkEtProperty) property_id) {
         case PROP_CONNECTED:
@@ -325,11 +335,14 @@ geye_eyelink_et_get_property(GObject       *obj,
         case PROP_IP_ADDRESS:
             g_value_set_string(value, self->ip_address);
             break;
+        case PROP_TRACKER_INFO:
+            g_value_set_string(value, self->info);
+            break;
         case PROP_NULL:
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID(obj, property_id, pspec);
     }
-
+    g_rec_mutex_unlock(&self->lock);
 }
 
 static void
@@ -367,6 +380,7 @@ geye_eyelink_et_class_init(GEyeEyelinkEtClass* klass)
     g_object_class_override_property(
             object_class, PROP_NUM_CALPOINTS, "num-calpoints"
             );
+    g_object_class_override_property(object_class, PROP_TRACKER_INFO, "tracker-info");
 }
 
 /* ***************************** public functions *************************** */

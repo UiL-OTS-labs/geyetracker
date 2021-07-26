@@ -248,7 +248,6 @@ setup_eyelink()
 void
 on_et_connected(GEyeEyetracker* et, gboolean connected, gpointer data)
 {
-    (void) et;
     EyetrackerData *testdata = data;
 
     gtk_widget_set_sensitive(testdata->cal_button, connected);
@@ -263,15 +262,21 @@ on_et_connected(GEyeEyetracker* et, gboolean connected, gpointer data)
                      "calpoint-stop",
                      G_CALLBACK(on_calpoint_stop),
                      data);
-    if (connected == TRUE)
-        gtk_label_set_label(testdata->error_label, "");
+
+    if (connected == TRUE) {
+        gchar buffer[1024];
+        char* tracker_info = geye_eyetracker_get_tracker_info(et);
+        g_snprintf(buffer, sizeof(buffer), "Connected to: %s", tracker_info);
+        gtk_label_set_label(GTK_LABEL(testdata->error_label), buffer);
+        g_free(tracker_info);
+    }
 }
 
 void on_error(GEyeEyetracker* et, const gchar* message, gpointer data)
 {
     (void) et;
     EyetrackerData *testdata = data;
-    gtk_label_set_label(testdata->error_label, message);
+    gtk_label_set_label(GTK_LABEL(testdata->error_label), message);
 }
 
 void
