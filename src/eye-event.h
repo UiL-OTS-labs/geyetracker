@@ -38,9 +38,11 @@ typedef enum _GEyeEventType {
 } GEyeEventType;
 
 typedef enum _GEyeEyeType{
-    GEYE_LEFT,
-    GEYE_RIGHT,
-    GEYE_AVG,
+    GEYE_NONE = 0,
+    GEYE_LEFT = 1 << 0,
+    GEYE_RIGHT= 1 << 1,
+    GEYE_BINOCULAR = GEYE_LEFT | GEYE_RIGHT,
+    GEYE_AVG  = 1 << 2,
 } GEyeEyeType;
 
 /**
@@ -49,9 +51,9 @@ typedef enum _GEyeEyeType{
  * @eye: tell which eye(s) this sample represents
  * @time: the time since some specific time in the past.
  *
- * This is something all event have together, they are of some type,
+ * This is something all events have together, they are of some type,
  * They relate to one eye or eg the average of both eyes, and they
- * have a time at which they occured.
+ * have a time at which they occurred.
  */
 typedef struct _GEyeEvent {
     GEyeEventType   type;
@@ -75,15 +77,23 @@ typedef struct _GEyeSample {
 } GEyeSample;
 
 #define GEYE_TYPE_SAMPLE geye_sample_get_type()
+G_MODULE_EXPORT GType
+geye_sample_get_type();
 
 G_MODULE_EXPORT GEyeEyeType
-geye_event_get_event_type(GEyeEvent* eventj);
+geye_event_get_event_type(GEyeEvent *event);
 
 G_MODULE_EXPORT GEyeEyeType
-geye_event_get_time(GEyeEvent* event);
+geye_event_get_time(GEyeEvent *event);
 
 G_MODULE_EXPORT GEyeSample*
 geye_sample_new(GEyeEyeType eye, gdouble time, gdouble x, gdouble y);
+
+G_MODULE_EXPORT GEyeSample*
+geye_sample_copy(const GEyeSample *sample);
+
+G_MODULE_EXPORT void
+geye_sample_free(GEyeSample *sample);
 
 G_END_DECLS 
 

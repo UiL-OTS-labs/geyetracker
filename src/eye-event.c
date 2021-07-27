@@ -52,9 +52,10 @@ geye_sample_free(GEyeSample* sample)
 }
 
 GEyeSample*
-geye_sample_copy(GEyeSample* sample)
+geye_sample_copy(const GEyeSample* sample)
 {
     g_return_val_if_fail(sample != NULL, NULL);
+
     return g_slice_dup(GEyeSample, sample);
 }
 

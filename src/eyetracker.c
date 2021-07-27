@@ -19,6 +19,7 @@
  */
 
 #include "eyetracker.h"
+#include "eye-event.h"
 
 G_DEFINE_INTERFACE(GEyeEyetracker, geye_eyetracker, G_TYPE_OBJECT)
 
@@ -26,6 +27,7 @@ enum signals {
     CONNECTED,
     CAL_POINT_START,
     CAL_POINT_STOP,
+    SAMPLE,
     ERROR,
     N_SIGNALS,
 };
@@ -145,6 +147,27 @@ geye_eyetracker_default_init(GEyeEyetrackerInterface *iface)
             NULL,
             G_TYPE_NONE,
             0);
+
+    /**
+     * GEyeEyetracker::sample:
+     * @eyetracker: the object that received this signal
+     * @sample:(transfer none): A sample of the left, right eye or an average.
+     *
+     * This signal is emitted while tracking and is signalled as soon as it
+     * is received, it depends on the eyetracker for which `GEyeEyeTypes` can be
+     * received. E.g. some eyetrackers do not support an average coordinate of
+     * both eyes together.
+     */
+    signals[SAMPLE] = g_signal_new(
+            "sample",
+            GEYE_TYPE_EYETRACKER,
+            G_SIGNAL_RUN_FIRST | G_SIGNAL_NO_RECURSE,
+            0,
+            NULL, NULL,
+            NULL,
+            G_TYPE_NONE,
+            1, GEYE_TYPE_SAMPLE
+            );
 
     /**
      * GEyeEyetracker::error

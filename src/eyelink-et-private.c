@@ -19,8 +19,11 @@
  */
 
 #include "eyelink-et-private.h"
+#include "eye-event.h"
 #include "eyetracker-error.h"
 #include <EyeLink/core_expt.h>
+#include <EyeLink/eye_data.h>
+#include <EyeLink/eyelink.h>
 
 static const char* EYELINK_THREAD_NAME = "Eyelink-thread";
 static gsize       EYELINK_PIXEL_SIZE = 4; //RGBA
@@ -145,6 +148,42 @@ error_info_free(gpointer data)
     g_free(info);
 }
 
+typedef struct sample_info {
+    GEyeEyetracker *et;
+    GEyeSample     *sample;
+} sample_info;
+
+/**
+ * sample_info_create:
+ * @et: the eyetracker on which the signal is to be emitted
+ * @sample:(transfer full): the sample to be emmited
+ *
+ * Create a data holder to emit samples in the context in which
+ * the eyetracker has been created.
+ */
+static sample_info*
+sample_info_create(GEyeEyetracker* et, GEyeSample* sample) {
+    sample_info* ret = g_slice_new(sample_info);
+    ret->et = g_object_ref(et);
+    ret->sample = sample;
+    return ret;
+}
+
+/**
+ * sample_info_free:
+ * @info: a `sample_info` previously created with sample_info_create
+ *
+ * release the resources of a sample_info
+ */
+static void
+sample_info_free(gpointer data)
+{
+    sample_info *info = data;
+    g_object_unref(info->et);
+    geye_sample_free(info->sample);
+    g_slice_free(sample_info, info);
+}
+
 static gint
 emit_connected(gpointer data)
 {
@@ -210,6 +249,48 @@ et_signal_error_printf(GEyeEyelinkEt* self, const gchar* format, ...)
                 info,
                 error_info_free
         );
+    }
+}
+
+static gint
+emit_sample(gpointer data) {
+    sample_info* info = data;
+    g_assert(g_main_context_is_owner(
+                GEYE_EYELINK_ET(info->et)->main_context));
+
+    g_signal_emit_by_name(info->et, "sample", info->sample);
+    return G_SOURCE_REMOVE;
+}
+
+static void
+send_sample_event(GEyeEyelinkEt* self, ALLD_DATA event, gdouble time)
+{
+    if (self->main_context) {
+        sample_info *info = NULL;
+        GEyeSample *left = NULL, *right = NULL;
+        if (self->used_eye & GEYE_LEFT)
+            left = geye_sample_new(GEYE_LEFT, time, event.fs.gx[LEFT], event.fs.gy[LEFT]);
+        if (self->used_eye & GEYE_RIGHT)
+            right = geye_sample_new(GEYE_RIGHT, time, event.fs.gx[RIGHT], event.fs.gy[RIGHT]);
+
+        if (left) {
+            info = sample_info_create(GEYE_EYETRACKER(self), left);
+            g_main_context_invoke_full(
+                    self->main_context,
+                    G_PRIORITY_DEFAULT,
+                    emit_sample,
+                    info,
+                    sample_info_free);
+        }
+        if (right) {
+            info = sample_info_create(GEYE_EYETRACKER(self), right);
+            g_main_context_invoke_full(
+                    self->main_context,
+                    G_PRIORITY_DEFAULT,
+                    emit_sample,
+                    info,
+                    sample_info_free);
+        }
     }
 }
 
@@ -324,7 +405,7 @@ et_disconnect(GEyeEyelinkEt* self)
     g_rec_mutex_unlock(&self->lock);
 
     if (self->main_context) {
-        struct connect_info *connected = g_malloc0(sizeof(gboolean));
+        connect_info *connected = g_malloc0(sizeof(connect_info));
         connected->connected = self->connected;
         connected->self = g_object_ref(self);
 
@@ -358,8 +439,37 @@ et_start_tracking(GEyeEyelinkEt* self)
                 result
                 );
     }
-    else
-        self->tracking = TRUE;
+    else {
+        gint start = eyelink_wait_for_block_start(100, 1, 1);
+        if (start) {
+            char eyes_available[128];
+            gsize sz = sizeof(eyes_available);
+            int el_eye = eyelink_eye_available();
+            switch (el_eye) {
+                case LEFT_EYE:
+                    g_snprintf(eyes_available, sz, "LEFT");
+                    self->used_eye = GEYE_LEFT;
+                    break;
+                case RIGHT_EYE:
+                    g_snprintf(eyes_available, sz, "RIGHT");
+                    self->used_eye = GEYE_RIGHT;
+                    break;
+                case BINOCULAR:
+                    g_snprintf(eyes_available, sz, "LEFT RIGHT");
+                    self->used_eye = GEYE_BINOCULAR;
+                    break;
+                default:
+                    g_assert_not_reached();
+            }
+            // TODO log to eyelog instead.
+            g_print("EYE_USED %d %s", self->used_eye, eyes_available);
+            self->tracking = TRUE;
+        }
+        else {
+            et_signal_error_printf(self, "%s: eyelink_wait_for_block_start() failed with: %d",
+                    __func__, result);
+        }
+    }
 
     g_rec_mutex_unlock(&self->lock);
 }
@@ -373,9 +483,10 @@ et_stop_tracking(GEyeEyelinkEt* self)
     g_rec_mutex_lock(&self->lock);
 
     if (self->recording)
-        rec_samples = 1, rec_events =1;
+        rec_samples = 1, rec_events = 1;
 
     result = start_recording(rec_samples, rec_events, 0, 0);
+    set_offline_mode();
     if (result != OK_RESULT)
         g_critical("Unable to stop tracking");
     else
@@ -540,22 +651,16 @@ static gboolean
 handle_events(GEyeEyelinkEt* self)
 {
     (void) self;
-    int eye;
     gboolean received_something = FALSE;
     int event_type;
     ALLD_DATA event;
     while ((event_type = eyelink_get_next_data(NULL)) != 0) {
+        gdouble ellapsed = g_timer_elapsed(self->timer, NULL);
         received_something = TRUE;
-        eye = eyelink_eye_available();
         eyelink_get_double_data(&event);
         switch (event_type) {
             case SAMPLE_TYPE:
-                if (eye == LEFT) {
-
-                }
-                else if (eye == RIGHT) {
-
-                }
+                send_sample_event(self, event, ellapsed);
             default:
                 ;
         }
@@ -890,7 +995,7 @@ void eyelink_thread_start_tracking(GEyeEyelinkEt* self, GError** error)
 
     g_rec_mutex_lock(&self->lock);
 
-    if (self->connected) {
+    if (!self->connected) {
         g_set_error(error,
                     geye_eyetracker_error_quark(),
                     GEYE_EYETRACKER_ERROR_INCORRECT_MODE,

@@ -39,6 +39,7 @@ geye_eyelink_et_init(GEyeEyelinkEt* self)
     self->thread_to_instance    = g_async_queue_new_full(g_free);
 
     self->main_context          = g_main_context_ref_thread_default();
+    self->timer                 = g_timer_new();
 
     g_rec_mutex_init(&self->lock);
     // keep this last, otherwise the queue might be NULL
@@ -252,6 +253,11 @@ eyelink_et_dispose(GObject* gobject)
     if (self->main_context) {
         g_main_context_unref(self->main_context);
         self->main_context = NULL;
+    }
+
+    if (self->timer) {
+        g_timer_destroy(self->timer);
+        self->timer = 0;
     }
 
     G_OBJECT_CLASS(geye_eyelink_et_parent_class)->dispose(gobject);

@@ -2,6 +2,7 @@
 #include <glib.h>
 #include <gtk/gtk.h>
 #include <geye.h>
+#include <math.h>
 
 const char* supported_eyetrackers[] = {
     "none",
@@ -22,8 +23,12 @@ typedef struct EyetrackerData {
     GEyeEyetracker *et;
     gboolean        is_calibrating;
     gboolean        is_cam_setup;
+    gboolean        is_tracking;
 
-    GtkWidget      *cal_button, *val_button, *setup_button;
+    GEyeSample     *leye_sample;
+    GEyeSample     *reye_sample;
+
+    GtkWidget      *cal_button, *val_button, *setup_button, *tracking_toggle;
 
     CalData         cal_data;       // Specifies the calibration state.
     ImageData       img_data;
@@ -122,6 +127,26 @@ on_calpoint_stop(GEyeEyetracker* et, gpointer data)
     gtk_widget_queue_draw(testdata->darea);
 }
 
+void
+on_sample(GEyeEyetracker* et, const GEyeSample *sample, gpointer data)
+{
+    (void) et;
+    EyetrackerData *testdata = data;
+    testdata->is_tracking = TRUE;
+
+    if (sample->parent.eye == GEYE_LEFT) {
+        if (testdata->leye_sample)
+            geye_sample_free(testdata->leye_sample);
+        testdata->leye_sample = geye_sample_copy(sample);
+    }
+    else if (sample->parent.eye == GEYE_RIGHT) {
+        if (testdata->reye_sample)
+            geye_sample_free(testdata->reye_sample);
+        testdata->reye_sample = geye_sample_copy(sample);
+    }
+    gtk_widget_queue_draw(testdata->darea);
+}
+
 gboolean
 on_setup_image(gpointer data) {
     ImagePars *pars = data;
@@ -141,7 +166,8 @@ on_setup_image(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
-void setup_image(
+void
+setup_image(
         GEyeEyetracker* et,
         guint           width,
         guint           height,
@@ -236,6 +262,30 @@ setup_button_clicked(GtkWidget* button, gpointer data)
     geye_eyetracker_start_setup(testdata->et);
 }
 
+void
+on_tracking_toggled(GtkWidget* tbutton, gpointer data)
+{
+    EyetrackerData *testdata = data;
+    GtkToggleButton *toggle = GTK_TOGGLE_BUTTON(tbutton);
+    gboolean active = gtk_toggle_button_get_active(toggle);
+
+    if (active) {
+        GError *error = NULL;
+        char buffer[256];
+        geye_eyetracker_start_tracking(testdata->et, &error);
+        if (error) {
+            g_snprintf(buffer, sizeof(buffer),
+                       "Unable to start tracking: %s", error->message);
+            gtk_label_set_label(GTK_LABEL(testdata->error_label), buffer);
+            g_error_free(error);
+            error = NULL;
+        }
+    }
+    else {
+        geye_eyetracker_stop_tracking(testdata->et);
+    }
+}
+
 GEyeEyetracker *
 setup_eyelink()
 {
@@ -253,6 +303,7 @@ on_et_connected(GEyeEyetracker* et, gboolean connected, gpointer data)
     gtk_widget_set_sensitive(testdata->cal_button, connected);
     gtk_widget_set_sensitive(testdata->val_button, connected);
     gtk_widget_set_sensitive(testdata->setup_button, connected);
+    gtk_widget_set_sensitive(testdata->tracking_toggle, connected);
 
     g_signal_connect(et,
                      "calpoint-start",
@@ -261,6 +312,10 @@ on_et_connected(GEyeEyetracker* et, gboolean connected, gpointer data)
     g_signal_connect(et,
                      "calpoint-stop",
                      G_CALLBACK(on_calpoint_stop),
+                     data);
+    g_signal_connect(et,
+                     "sample",
+                     G_CALLBACK(on_sample),
                      data);
 
     if (connected == TRUE) {
@@ -334,10 +389,39 @@ select_eyetracker(GtkComboBox* widget, gpointer data)
     }
 }
 
+void
+fill_circle(cairo_t* cr, gdouble x, gdouble y, gdouble radius, gdouble* color)
+{
+    cairo_save(cr);
+    cairo_translate(cr, x, y);
+    cairo_move_to(cr, radius, 0.0);
+    cairo_arc(cr, 0.0, 0.0, radius, 0.0, 2 * M_PI);
+    cairo_set_source_rgb(cr, color[0], color[1], color[2]);
+    cairo_fill(cr);
+    cairo_restore(cr);
+}
+
+void
+stroke_circle(cairo_t* cr, gdouble x, gdouble y, gdouble radius, gdouble* color)
+{
+    cairo_save(cr);
+    cairo_translate(cr, x, y);
+    cairo_move_to(cr, radius, 0.0);
+    cairo_arc(cr, 0.0, 0.0, radius, 0.0, 2 * M_PI);
+    cairo_set_source_rgb(cr, color[0], color[1], color[2]);
+    cairo_stroke(cr);
+    cairo_restore(cr);
+}
+
 gboolean
 on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
     guint width, height;
     EyetrackerData* testdata = data;
+    gdouble red[]    = {1.0, 0.0, 0.0};
+    gdouble blue[]   = {0.0, 0.0, 1.0};
+    gdouble yellow[] = {1.0, 1.0, 0.0};
+    gdouble green[]  = {0.0, 1.0, 0.0};
+    gdouble black[]  = {0.0, 0.0, 0.0};
 
     double circle_rad;
     double s_circle_rad;
@@ -348,8 +432,8 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
 
     gtk_render_background(context, cr, 0, 0, width, height);
 
-    circle_rad   = width/50.0;
-    s_circle_rad = width/200.0;
+    circle_rad   = height/50.0;
+    s_circle_rad = height/200.0;
 
     // clear background
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
@@ -357,28 +441,32 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
     cairo_fill(cr);
 
     if (testdata->is_calibrating && testdata->cal_data.needs_dot) {
-        cairo_set_source_rgb(cr, 0.0, 0.0, 1.0);
-        cairo_arc(
-                cr,
-                testdata->cal_data.x,
-                testdata->cal_data.y,
-                circle_rad,
-                0,
-                2 * 3.1415);
-        cairo_close_path(cr);
-        cairo_fill(cr);
+        fill_circle(cr,
+                    testdata->cal_data.x,
+                    testdata->cal_data.y,
+                    circle_rad,
+                    blue);
+        fill_circle(cr,
+                    testdata->cal_data.x,
+                    testdata->cal_data.y,
+                    s_circle_rad,
+                    yellow);
+    }
 
-        cairo_set_source_rgb(cr, 1.0, 1.0, 0.0);
-        cairo_arc(
-                cr,
-                testdata->cal_data.x,
-                testdata->cal_data.y,
-                s_circle_rad,
-                0,
-                2 * 3.1415);
-        cairo_close_path(cr);
-        cairo_fill(cr);
-
+    if (testdata->is_tracking) {
+        gdouble radius = 20;
+        if (testdata->leye_sample) {
+            gdouble x = testdata->leye_sample->x;
+            gdouble y = testdata->leye_sample->y;
+            fill_circle(cr, x, y, radius, red);
+            stroke_circle(cr, x, y, radius, black);
+        }
+        if (testdata->reye_sample) {
+            gdouble x = testdata->reye_sample->x;
+            gdouble y = testdata->reye_sample->y;
+            fill_circle(cr, x, y, radius, green);
+            stroke_circle(cr, x, y, radius, black);
+        }
     }
 
     if (testdata->is_cam_setup){
@@ -407,20 +495,23 @@ on_draw(GtkWidget* widget, cairo_t *cr, gpointer data) {
 int main(int argc, char** argv)
 {
     GtkWidget* window, *darea, *cal_button, *val_button, *et_combo;
-    GtkWidget* setup_button, *grid, *error_label;
+    GtkWidget* setup_button, *grid, *error_label, *tracking_toggle;
     gtk_init(&argc, &argv);
 
     window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     grid = gtk_grid_new();
+
     gtk_container_set_border_width(GTK_CONTAINER(grid), 10);
     cal_button = gtk_button_new_with_label("calibrate");
     val_button = gtk_button_new_with_label("validate");
     setup_button = gtk_button_new_with_label("setup");
+    darea = gtk_drawing_area_new();
+    error_label = gtk_label_new("Welcom to the gtk geyetracker test");
+    tracking_toggle = gtk_toggle_button_new_with_label("tracking");
     gtk_widget_set_sensitive(cal_button, FALSE);
     gtk_widget_set_sensitive(val_button, FALSE);
     gtk_widget_set_sensitive(setup_button, FALSE);
-    darea = gtk_drawing_area_new();
-    error_label = gtk_label_new("Welcom to the gtk geyetracker test");
+    gtk_widget_set_sensitive(tracking_toggle, FALSE);
     gtk_widget_set_halign(error_label, GTK_ALIGN_START);
 
     GdkEventMask mask = gtk_widget_get_events(darea);
@@ -442,7 +533,8 @@ int main(int argc, char** argv)
     gtk_grid_attach(GTK_GRID(grid), setup_button, 2, 1, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), cal_button, 3, 1, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), val_button, 4, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), error_label, 0, 2, 5, 1);
+    gtk_grid_attach(GTK_GRID(grid), error_label, 0, 2, 4, 1);
+    gtk_grid_attach(GTK_GRID(grid), tracking_toggle, 4, 2, 1, 1);
 
     for (size_t i = 0;
          i < sizeof(supported_eyetrackers)/sizeof(supported_eyetrackers[0]);
@@ -458,6 +550,7 @@ int main(int argc, char** argv)
         .cal_button = cal_button,
         .val_button = val_button,
         .setup_button = setup_button,
+        .tracking_toggle = tracking_toggle,
         .darea = darea,
         .error_label = error_label
     };
@@ -502,6 +595,12 @@ int main(int argc, char** argv)
             darea,
             "key-press-event",
             G_CALLBACK(on_key_press),
+            &testdata
+            );
+    g_signal_connect(
+            tracking_toggle,
+            "toggled",
+            G_CALLBACK(on_tracking_toggled),
             &testdata
             );
 

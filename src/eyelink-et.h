@@ -54,10 +54,12 @@ struct _GEyeEyelinkEt {
     guint8*         image_data; //RGBA
     gsize           image_size; // width * height * 4.
 
-    gboolean        quit_hooks;   // Thread only.
-    gboolean        stop_thread;  // Thread only.
+    gboolean        quit_hooks;     // Thread only.
+    gboolean        stop_thread;    // Thread only.
+    gint            used_eye;       // Thread only. is LEFT, RIGHT or BINOCULAR
 
     GMainContext   *main_context; // The context in which signal will be emitted.
+    GTimer         *timer;
 
     /*
      * Callbacks for end users, although using signals is
