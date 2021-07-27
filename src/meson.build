@@ -19,6 +19,7 @@
 geye_public_header = 'geye.h'
 geye_public_headers = files (
     geye_public_header,
+    'eye-event.h',
     'eyelink-et.h',
     'eyetracker-error.h',
     'eyetracker.h'
@@ -37,6 +38,7 @@ endif
 
 
 geye_sources = files(
+    'eye-event.c',
     'eyelink-et-private.c',
     'eyelink-et.c',
     'eyetracker-error.c',

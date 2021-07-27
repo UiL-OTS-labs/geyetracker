@@ -396,7 +396,7 @@ int main(int argc, char** argv)
     setlocale(LC_ALL, "");
     g_test_init(&argc, &argv, NULL);
 
-    int one = 1, two = 2, four=4, eight = 8;
+    int one = 1,/* two = 2,*/ four=4, eight = 8;
 
     g_log_set_always_fatal(G_LOG_FLAG_FATAL | G_LOG_FLAG_RECURSION);
 

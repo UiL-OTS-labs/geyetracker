@@ -23,8 +23,6 @@
 #define GEYE_EYELINK_ET_H
 
 #include "eyetracker.h"
-#include <glib-object.h>
-#include <gio/gio.h>
 
 G_BEGIN_DECLS
 

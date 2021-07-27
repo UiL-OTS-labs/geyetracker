@@ -21,6 +21,7 @@
 #ifndef GEYE_H
 #define GEYE_H
 
+#include "eye-event.h"
 #include "eyelink-et.h"
 #include "eyetracker-error.h"
 #include "eyetracker.h"
